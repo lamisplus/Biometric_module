@@ -1,0 +1,24 @@
+basePackage: org.lamisplus.modules.biometric
+name: BiometricModule
+store: true
+dependencies: {PatientModule: 2.0.7}
+menus:
+  - icon: fa fa-hand-paper-o
+    disabled: false
+    name: Biometric Setup
+    state: biometric
+    url: /across/resources/static/biometric/index.html
+umdLocation: /across/resources/static/biometric/index.html
+gitHubLink: https://api.github.com/repos/lamisplus/Biometric-Module/releases/latest
+webModules:
+  - breadcrumb: BIOMETRIC
+    name: BiometricModule
+    path: biometric
+    position: 99
+permissions:
+  - name: biometric_add_device
+    description: Add biometric devices
+  - name: biometric_delete_device
+    description: Delete biometric device
+  - name: biometric_update_device
+    description: Update biometric devices
