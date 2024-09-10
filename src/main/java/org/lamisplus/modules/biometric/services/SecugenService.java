@@ -115,14 +115,14 @@ public class SecugenService {
                     String matchType = "";
                     Optional<String> optionalPersonUuid = biometricRepository.getPersonUuid(captureRequestDTO.getPatientId());
                     recaptureOrIdentify(true, optionalPersonUuid, template, biometric);
-                    LOG.info("Type is {}", BiometricEnrollmentDto.Type.values());
+                    log.info("Type is {}", BiometricEnrollmentDto.Type.values());
 //                    biometric.setMatchType(matchType);
 //                    LOG.info(" Match Type is {}", matchType);
                 }else {
                     if(getMatch(biometricsInFacility, biometric.getTemplate())){
                         this.addMessage(ERROR_MESSAGE, biometric, FINGERPRINT_ALREADY_CAPTURED);
                         biometric.setType(BiometricEnrollmentDto.Type.ERROR);
-                        LOG.info(FINGERPRINT_ALREADY_CAPTURED);
+                        log.info(FINGERPRINT_ALREADY_CAPTURED);
 //                        biometric.setMatchType(MatchTypes.PerfectMatch.getMatchType());
 //                        biometric.setMatchType("No Match");
                         return biometric;
@@ -267,7 +267,7 @@ public class SecugenService {
         for (StoredBiometric biometric : storedBiometrics) {
             if(null != biometric.getPersonUuid()) {
                 MATCHED_PERSON_UUID = biometric.getPersonUuid();
-                LOG.info("MATCHED_PERSON_UUID {}", MATCHED_PERSON_UUID);
+                log.info("MATCHED_PERSON_UUID {}", MATCHED_PERSON_UUID);
             }
             if (biometric.getLeftMiddleFinger() != null && biometric.getLeftMiddleFinger().length != 0) {
                 if(matched)break;
@@ -354,15 +354,15 @@ public class SecugenService {
         if (this.scannerIsNotSet(reader)) {
             throw new EntityNotFoundException(Biometric.class, "Scanner", "Scanner");
         }
-        LOG.info("level 1 ...");
+        log.info("level 1 ...");
         BiometricEnrollmentDto biometric = secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
         byte firstTwoChar = biometric.getTemplate()[0];
         //String template = "46% OR AC%";
         String template = Integer.toHexString(firstTwoChar)+"%";
-        LOG.info("level 2 ...");
+        log.info("level 2 ...");
         biometricsInFacility = biometricRepository
                     .findByFacilityIdWithTemplate(facility.getCurrentUserOrganization(), template);
-        LOG.info("level 3 ...");
+        log.info("level 3 ...");
         if(getMatch(biometricsInFacility, biometric.getTemplate())){
             if (MATCHED_PERSON_UUID != null) {
                 Optional<ClientIdentificationProject> clientId = biometricRepository.getBiometricPersonData(MATCHED_PERSON_UUID);
@@ -375,7 +375,7 @@ public class SecugenService {
                 }
             }
         }
-        LOG.info("level 4 ...");
+        log.info("level 4 ...");
         ClientIdentificationDTO clientIdentificationDTO = new ClientIdentificationDTO();
         clientIdentificationDTO.setMessageType("SUCCESS_NO_MATCH_FOUND");
         clientIdentificationDTO.setMessage("Could not identify clients");
@@ -414,7 +414,7 @@ public class SecugenService {
                 if (getMatch(personBiometrics, biometricEnrollmentDto.getTemplate())) {
                     biometricEnrollmentDto.setMatch(true);
                     if (TEMPLATE_TYPE.equalsIgnoreCase(biometricEnrollmentDto.getTemplateType())) {
-                        LOG.info("Perfect match...");
+                        log.info("Perfect match...");
 //                        biometricEnrollmentDto.setMatchType(MatchTypes.PerfectMatch.getMatchType());
                         biometricEnrollmentDto.getMessage().put(MATCH, "Perfect...");
                         biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.SUCCESS);
@@ -427,7 +427,7 @@ public class SecugenService {
                         return biometricEnrollmentDto;
     
                     } else {
-                        LOG.info("Imperfect match...");
+                        log.info("Imperfect match...");
 //                        biometricEnrollmentDto.setMatchType(MatchTypes.ImperfectMatch.getMatchType());
                         biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "SUCCESSFULLY RECAPTURED, IMPERFECT MATCH");
                         biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.WARNING);
@@ -456,7 +456,7 @@ public class SecugenService {
                     }
                 }
             }
-            LOG.info("no match...");
+            log.info("no match...");
             biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.WARNING);
             biometricEnrollmentDto.getMessage().put(MATCH, "Biometric not found...");
             biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "NO MATCH...");

@@ -27,7 +27,7 @@ public class AsyncConfiguration implements AsyncConfigurer, SchedulingConfigurer
     @Override
     @Bean(name = "taskExecutor")
     public Executor getAsyncExecutor() {
-        LOG.info ("Creating Async Task Executor");
+        log.info ("Creating Async Task Executor");
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor ();
         executor.setCorePoolSize (3);
         executor.setMaxPoolSize (3);

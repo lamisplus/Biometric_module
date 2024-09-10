@@ -48,7 +48,7 @@ public class BiometricService {
         });
 
         if(existingCount.get() > 0){
-            LOG.info("Patient: " + biometricEnrollmentDto.getPatientId() + "'s prints have already been synced.");
+            log.info("Patient: " + biometricEnrollmentDto.getPatientId() + "'s prints have already been synced.");
             return BiometricDto.builder()
                     .numberOfFingers(biometricEnrollmentDto.getCapturedBiometricsList().size())
                     .personId(biometricEnrollmentDto.getPatientId())
@@ -57,12 +57,12 @@ public class BiometricService {
         }
 
         if(biometricEnrollmentDto.getCapturedBiometricsList().size() < BIOMETRIC_SIZE){
-            LOG.error("Biometric Template is less than 6");
+            log.error("Biometric Template is less than 6");
             throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Biometric template is less than 6");
         }
 
         if(biometricEnrollmentDto.getType().equals(BiometricEnrollmentDto.Type.ERROR)){
-            LOG.error("The templates are not valid");
+            log.error("The templates are not valid");
             throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Type is Error");
         }
 
@@ -71,7 +71,7 @@ public class BiometricService {
                 .orElseThrow(() -> new EntityNotFoundException(BiometricEnrollmentDto.class,"patientId:", ""+personId));
     
         if(biometricRepository.getBiometricByDate(person.getUuid(), LocalDate.now()) > 0){
-            LOG.error("Fingerprints for today already synced for client: " + personId);
+            log.error("Fingerprints for today already synced for client: " + personId);
             throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Cannot capture on same date");
         }
         Optional<Integer> opRecapture = biometricRepository.findMaxRecapture(person.getUuid());
@@ -104,7 +104,7 @@ public class BiometricService {
         biometricRepository.saveAll (biometrics);
 
         if(biometricEnrollmentDto.getDeduplication() != null){
-            LOG.info("Deduplication Data ***** {}", biometricEnrollmentDto.getDeduplication());
+            log.info("Deduplication Data ***** {}", biometricEnrollmentDto.getDeduplication());
             Deduplication deduplication = new Deduplication();
 
             deduplication.setPersonUuid(person.getUuid());
@@ -370,7 +370,7 @@ public class BiometricService {
      */
     public List<GroupedCapturedBiometric> getGroupedCapturedBiometric(Long personId){
         List<GroupedCapturedBiometric> groupedCapturedBiometrics = biometricRepository.getGroupedPersonBiometric(personId);
-        LOG.info("Size is {}", groupedCapturedBiometrics.size());
+        log.info("Size is {}", groupedCapturedBiometrics.size());
         return groupedCapturedBiometrics;
     }
 
