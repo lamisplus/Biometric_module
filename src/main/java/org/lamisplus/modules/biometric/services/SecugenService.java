@@ -98,7 +98,7 @@ public class SecugenService {
                 }
 //                biometric.setMatchType(MatchTypes.NoMatch.getMatchType());
             } else if(identify){
-                biometric.setClientIdentificationDTO(identify(reader));
+                biometric.setClientIdentificationDTO(identify(reader, biometric));
 //                biometric.setMatchType(MatchTypes.PerfectMatch.getMatchType());
                 return biometric;
             }
@@ -343,14 +343,14 @@ public class SecugenService {
      * @param reader
      * @return ClientIdentificationDTO
      */
-    public ClientIdentificationDTO identify(String reader){
+    public ClientIdentificationDTO identify(String reader, BiometricEnrollmentDto biometricEnrollmentDto){
         //clear if not empty
         if(!biometricsInFacility.isEmpty())biometricsInFacility.clear();
         if (this.scannerIsNotSet(reader)) {
             throw new EntityNotFoundException(Biometric.class, "Scanner", "Scanner");
         }
         log.info("level 1 ...");
-        BiometricEnrollmentDto biometric = secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
+        BiometricEnrollmentDto biometric = biometricEnrollmentDto != null ? biometricEnrollmentDto : secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
         byte firstTwoChar = biometric.getTemplate()[0];
         //String template = "46% OR AC%";
         String template = Integer.toHexString(firstTwoChar)+"%";

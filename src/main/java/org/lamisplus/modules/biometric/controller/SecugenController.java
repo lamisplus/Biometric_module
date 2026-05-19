@@ -58,7 +58,7 @@ public class SecugenController {
 
     @PostMapping(BIOMETRICS_URL_VERSION_ONE + "/identify")
     public ClientIdentificationDTO enrollment(@RequestParam String reader) {
-        return secugenService.identify(reader);
+        return secugenService.identify(reader, null);
     }
 
     @PostMapping(BIOMETRICS_URL_VERSION_ONE + "/enrollment2")
