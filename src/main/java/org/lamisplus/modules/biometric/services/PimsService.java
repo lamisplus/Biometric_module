@@ -77,8 +77,8 @@ public class PimsService {
 	}
 	
 	public Object verifyPatientFromPins(Long facilityId,String patientId, PimsRequestDTO pimsRequestDTO) {
-		LOG.info("id {}", patientId);
-		LOG.info("facility {}", facilityId);
+		log.info("id {}", patientId);
+		log.info("facility {}", facilityId);
 		ObjectMapper mapper = new ObjectMapper();
 		PimsVerificationResponseDTO pimsVerificationResponseDTO = patientISAlreadyPIMSVerified(facilityId, patientId,mapper);
 		if(pimsVerificationResponseDTO != null){
@@ -91,7 +91,7 @@ public class PimsService {
 		if(datimIdOptional.isPresent()){
 			OrganisationUnitIdentifier organisationUnitIdentifier = datimIdOptional.get();
 			pimsRequestDTO.setFacilityId(organisationUnitIdentifier.getCode());
-			LOG.info("datim code {}", organisationUnitIdentifier.getCode());
+			log.info("datim code {}", organisationUnitIdentifier.getCode());
 		}
 		RestTemplate restTemplate = new RestTemplate();
 		//String url = "http://pimssandbox.phis3project.org.ng/api/Prints/findClient";
@@ -102,12 +102,12 @@ public class PimsService {
 				.filter(c -> c.getArchived() == 0)
 				.findAny();
 		if(config.isPresent()){
-			LOG.info("dynamic configuration");
+			log.info("dynamic configuration");
 			url = config.get().getUrl()+"/Prints/findClient";
 		}
 			if (pimsAuthentication != null && pimsAuthentication.getIsAuthenticated().equalsIgnoreCase("true")) {
 				String token = pimsAuthentication.getToken();
-				LOG.info("token: " + token);
+				log.info("token: " + token);
 				HttpHeaders headers = GetHTTPHeaders();
 				headers.add("Authorization","Bearer "+token);
 				PimsOnlineRequestDTO request = new PimsOnlineRequestDTO();
@@ -118,18 +118,18 @@ public class PimsService {
 				ResponseEntity<PimsVerificationResponseDTO> responseEntity =
 						getRestTemplate(restTemplate).exchange(url, HttpMethod.POST, requestDTOEntity, PimsVerificationResponseDTO.class);
 				PimsVerificationResponseDTO response = responseEntity.getBody();
-				LOG.info("verify Response: " + response);
+				log.info("verify Response: " + response);
 				saveVerificationOnLocalSystem(facilityId, patientId, mapper, response);
 				return responseEntity.getBody();
 			}else {
-				LOG.error("Failed authentication from PIMS server, kindly ensure you had valid credentials");
+				log.error("Failed authentication from PIMS server, kindly ensure you had valid credentials");
 				return  pimsAuthentication;
 			}
 	}
 	
 	private void saveVerificationOnLocalSystem(Long facilityId, String patientId, ObjectMapper mapper, PimsVerificationResponseDTO response) {
 		JsonNode jsonNodeResponse = mapper.valueToTree(response);
-		LOG.info("saving Response on system ");
+		log.info("saving Response on system ");
 		String pimPatientId = null;
 		if(!response.getEnrollments().isEmpty()){
 			pimPatientId = response.getEnrollments().get(0)
@@ -146,7 +146,7 @@ public class PimsService {
 			pimsTracker.setPimsPatientId(pimPatientId);
 			pimsTracker.setIsVerified(response.getMessage().contains("success"));
 			pimsTrackerRepository.save(pimsTracker);
-			LOG.info("updated successfully");
+			log.info("updated successfully");
 		}else {
 			PimsTracker pimsTracker = PimsTracker.builder()
 					.isVerified(response.getMessage().contains("success"))
@@ -158,19 +158,19 @@ public class PimsService {
 					.date(LocalDate.now())
 					.build();
 			pimsTrackerRepository.save(pimsTracker);
-			LOG.info("save successfully");
+			log.info("save successfully");
 		}
 	}
 	
 	private PimsVerificationResponseDTO patientISAlreadyPIMSVerified(Long facilityId, String patientId, ObjectMapper mapper) {
 		try {
 			if (patientId != null) {
-				LOG.info("An already existed verified patient " );
+				log.info("An already existed verified patient " );
 				Optional<PimsTracker> pimsTrackerOptional =
 						pimsTrackerRepository.getPimsTrackerByPersonUuidAndFacilityIdAndArchived(patientId, facilityId,0);
 				if (pimsTrackerOptional.isPresent()) {
 					PimsTracker pimsTracker = pimsTrackerOptional.get();
-					LOG.info("data {}",  pimsTracker.toString());
+					log.info("data {}",  pimsTracker.toString());
 					if (pimsTracker.getIsVerified()) {
 						JsonNode data = pimsTracker.getData();
 						return mapper.treeToValue(data, PimsVerificationResponseDTO.class);
@@ -178,7 +178,7 @@ public class PimsService {
 				}
 			}
 		}catch(Exception e){
-		  LOG.error("An error occur during  checking a patient in the DB error message {} ", Arrays.toString(e.getStackTrace()) );
+		  log.error("An error occur during  checking a patient in the DB error message {} ", Arrays.toString(e.getStackTrace()) );
 		}
 		return null;
 	}
@@ -193,17 +193,17 @@ public class PimsService {
 			if(config.isPresent()){
 				PimsConfig pimsConfig = config.get();
 				url = pimsConfig.getUrl()+"/auth/token";
-				LOG.info("dynamic coded configuration");
+				log.info("dynamic coded configuration");
 				userCredentials = new PimsUserCredentials(pimsConfig.getUsername(), pimsConfig.getPassword());
 				
 			}else{
 				 userCredentials = new PimsUserCredentials("******", "******");
-				LOG.info("payload: " + userCredentials.toString());
+				log.info("payload: " + userCredentials.toString());
 			}
 			HttpEntity<PimsUserCredentials> loginEntity = new HttpEntity<>(userCredentials, GetHTTPHeaders());
 			ResponseEntity<PimsAuthenticationResponse> responseEntity =
 					getRestTemplate(restTemplate).exchange(url, HttpMethod.POST, loginEntity, PimsAuthenticationResponse.class);
-			LOG.info("auth response {}", responseEntity.getBody());
+			log.info("auth response {}", responseEntity.getBody());
 			return responseEntity.getBody();
 		}catch (Exception e) {
 			e.printStackTrace();
