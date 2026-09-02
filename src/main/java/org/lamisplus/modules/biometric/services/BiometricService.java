@@ -391,25 +391,7 @@ public class BiometricService {
      * @return nothing (void)
      */
     public void removeTemplateType(Long personId, String templateType){
-        //Checking if the person exist in the list
-        if(!BiometricStoreDTO.getPatientBiometricStore().isEmpty() && BiometricStoreDTO.getPatientBiometricStore().get(personId) != null){
-
-            //removes the specific finger or template type
-            final List<CapturedBiometricDto> capturedBiometricsListDTO = BiometricStoreDTO
-                    .getPatientBiometricStore()
-                    .values()
-                    .stream()
-                    .flatMap(Collection::stream)
-                    .collect(Collectors.toList())
-                    .stream()
-                    .filter(c->!c.getTemplateType().equals(templateType))
-                    .collect(Collectors.toList());
-
-            //removes the person
-            BiometricStoreDTO.getPatientBiometricStore().remove(personId);
-            //fills the list with the specific finger or template type removed
-            BiometricStoreDTO.getPatientBiometricStore().put(personId, capturedBiometricsListDTO);
-        }
+        BiometricStoreDTO.removeTemplateType(personId, templateType);
     }
 
     public List<GroupedCapturedBiometric> getPatientBiometricCount(String personUuid) {

@@ -89,13 +89,8 @@ public class SecugenService {
             String template = Integer.toHexString(firstTwoChar)+"%";
 
             if(!identify) {
-                if(captureRequestDTO.getCapturedBiometricsList() != null && !captureRequestDTO.getCapturedBiometricsList().isEmpty()) {
-                    captureRequestDTO.getCapturedBiometricsList().forEach(capturedBiometricDto -> {
-                        if(captureRequestDTO.getPatientId() != null) {
-                            BiometricStoreDTO.addCapturedBiometrics(captureRequestDTO.getPatientId(), capturedBiometricDto);
-                        }
-                    });
-                }
+                BiometricStoreDTO.mergeCapturedBiometrics(captureRequestDTO.getPatientId(),
+                        captureRequestDTO.getCapturedBiometricsList());
 //                biometric.setMatchType(MatchTypes.NoMatch.getMatchType());
             } else if(identify){
                 biometric.setClientIdentificationDTO(identify(reader, biometric));
@@ -130,13 +125,9 @@ public class SecugenService {
                 }
 
                 byte[] scannedTemplate = biometric.getTemplate();
-                if(biometric.getTemplate() != null && !BiometricStoreDTO.getPatientBiometricStore().isEmpty()) {
-                    final List<CapturedBiometricDto> capturedBiometricsListDTO = BiometricStoreDTO
-                            .getPatientBiometricStore()
-                            .values()
-                            .stream()
-                            .flatMap(Collection::stream)
-                            .collect(Collectors.toList());
+                if(biometric.getTemplate() != null && BiometricStoreDTO.hasCapturedBiometrics(biometric.getPatientId())) {
+                    final List<CapturedBiometricDto> capturedBiometricsListDTO =
+                            BiometricStoreDTO.getCapturedBiometrics(biometric.getPatientId());
 
                     if(!recapture) {
                         for (CapturedBiometricDto capturedBiometricsDTO : capturedBiometricsListDTO) {
@@ -161,8 +152,7 @@ public class SecugenService {
                 capturedBiometrics.setMatchType(biometric.getMatchType());
 
                 List<CapturedBiometricDto> capturedBiometricsList =
-                        BiometricStoreDTO.addCapturedBiometrics(biometric.getPatientId(), capturedBiometrics)
-                                .get(biometric.getPatientId());
+                        BiometricStoreDTO.addCapturedBiometrics(biometric.getPatientId(), capturedBiometrics);
 
                 biometric.setCapturedBiometricsList(capturedBiometricsList);
                 biometric.setTemplate(scannedTemplate);
@@ -247,12 +237,7 @@ public class SecugenService {
      * @return Boolean
      */
     public Boolean emptyStoreByPersonId(Long personId){
-        Boolean hasCleared = false;
-        if(!BiometricStoreDTO.getPatientBiometricStore().isEmpty() && BiometricStoreDTO.getPatientBiometricStore().get(personId) != null){
-            BiometricStoreDTO.getPatientBiometricStore().remove(personId);
-            hasCleared = true;
-        }
-        return hasCleared;
+        return BiometricStoreDTO.removePatient(personId);
     }
 
     /**
