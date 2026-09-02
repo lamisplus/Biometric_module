@@ -1,7 +1,8 @@
 package org.lamisplus.modules.biometric.services;
 
 import SecuGen.FDxSDKPro.jni.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.lamisplus.modules.biometric.config.SecugenProperties;
 import org.lamisplus.modules.biometric.domain.dto.BiometricTemplateDTO;
 import org.lamisplus.modules.biometric.domain.dto.DeviceDTO;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -21,16 +23,18 @@ import static SecuGen.FDxSDKPro.jni.SGPPPortAddr.USB_AUTO_DETECT;
 /**
  * @author
  */
-@Data
+@Getter
+@Setter
 @Service
 public class SecugenManager {
     public static final int QUALITY = 61;
     public static final int AGE = 6;
+    private static final int CAPTURE_RETRIES = 1;
     private JSGFPLib sgfplib;
     private SGDeviceInfoParam deviceInfo;
     private Long error;
-    private long iCount = 0L;
     private int sgFingerPositionNumber = SGFingerPosition.SG_FINGPOS_UK;
+    private Long openedDeviceName;
 
     @Autowired
     private SecugenProperties secugenProperties;
@@ -41,23 +45,40 @@ public class SecugenManager {
      * @param sgFDxDeviceName
      * @return
      */
-    public Long boot(long sgFDxDeviceName) {
-        if (this.sgfplib != null) {
-            this.sgfplib.CloseDevice();
-            this.sgfplib.Close();
-            this.sgfplib = null;
+    public synchronized Long boot(long sgFDxDeviceName) {
+        if (this.sgfplib != null && this.deviceInfo != null
+                && this.openedDeviceName != null && this.openedDeviceName == sgFDxDeviceName) {
+            this.secugenProperties.setTimeout(180000L);
+            return SGFDxErrorCode.SGFDX_ERROR_NONE;
         }
 
+        this.release();
         this.sgfplib = new JSGFPLib();
 
-        //Init
         error = sgfplib.Init(SGFDxDeviceName.SG_DEV_AUTO);
-        //Open Device
+        if (error != SGFDxErrorCode.SGFDX_ERROR_NONE) {
+            logger.error("Scanner initialisation failed: " + error);
+            this.release();
+            return error;
+        }
+
         error = this.openDeviceWithUsbAutoDetect();
-        //Get Device Information
-        deviceInfo = new SGDeviceInfoParam();
-        error = sgfplib.GetDeviceInfo(deviceInfo);
-        //setTimeout
+        if (error != SGFDxErrorCode.SGFDX_ERROR_NONE) {
+            logger.error("Scanner could not be opened: " + error);
+            this.release();
+            return error;
+        }
+
+        SGDeviceInfoParam openedDeviceInfo = new SGDeviceInfoParam();
+        error = sgfplib.GetDeviceInfo(openedDeviceInfo);
+        if (error != SGFDxErrorCode.SGFDX_ERROR_NONE) {
+            logger.error("Scanner information could not be read: " + error);
+            this.release();
+            return error;
+        }
+
+        this.deviceInfo = openedDeviceInfo;
+        this.openedDeviceName = sgFDxDeviceName;
         this.secugenProperties.setTimeout(180000L);
         return error;
     }
@@ -66,23 +87,33 @@ public class SecugenManager {
         return this.boot(SGFDxDeviceName.SG_DEV_AUTO);
     }
 
-    /*public JSGFPLib getSgfplib() {
-        if (this.sgfplib == null) {
-            this.boot();
-        }
-        return this.sgfplib;
-    }*/
-
     public Long openDeviceWithUsbAutoDetect() {
         return this.sgfplib.OpenDevice(USB_AUTO_DETECT);
     }
 
-    public Long closeDevice() {
-        return this.sgfplib.Close();
+    public synchronized Long closeDevice() {
+        Long closed = this.sgfplib == null ? SGFDxErrorCode.SGFDX_ERROR_NONE : this.sgfplib.Close();
+        this.release();
+        return closed;
     }
 
     public void setLedOn(boolean ledStatus) {
         this.sgfplib.SetLedOn(ledStatus);
+    }
+
+    @PreDestroy
+    synchronized void release() {
+        if (this.sgfplib != null) {
+            try {
+                this.sgfplib.CloseDevice();
+                this.sgfplib.Close();
+            } catch (Exception exception) {
+                logger.warn("Scanner did not close cleanly: " + exception.getMessage());
+            }
+        }
+        this.sgfplib = null;
+        this.deviceInfo = null;
+        this.openedDeviceName = null;
     }
 
     /**
@@ -108,21 +139,30 @@ public class SecugenManager {
      * @return
      */
     public byte[] captureFingerPrintImage() {
-        byte[] imageBuffer = new byte[deviceInfo.imageWidth * deviceInfo.imageHeight];
-        Long timeout = secugenProperties.getTimeout();
-        Long quality = secugenProperties.getQuality();
-        error = this.sgfplib.GetImageEx(imageBuffer, timeout, 1, quality);
-
-        if (error != SGFDxErrorCode.SGFDX_ERROR_NONE) {
-            logger.info("Image capture error: " + error);
-            if (iCount < 1L) {
-                iCount++;
-                this.captureFingerPrintImage();
-            }
+        if (this.sgfplib == null || this.deviceInfo == null) {
+            logger.error("Image capture attempted without an open reader");
             return null;
         }
-        iCount = 0L;
-        return imageBuffer;
+        for (int attempt = 0; attempt <= CAPTURE_RETRIES; attempt++) {
+            byte[] imageBuffer = new byte[deviceInfo.imageWidth * deviceInfo.imageHeight];
+            error = this.sgfplib.GetImageEx(imageBuffer, secugenProperties.getTimeout(), 1, secugenProperties.getQuality());
+            if (error == SGFDxErrorCode.SGFDX_ERROR_NONE) {
+                return imageBuffer;
+            }
+            logger.info("Image capture error: " + error);
+            if (isDeviceLevelError(error)) {
+                this.release();
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private boolean isDeviceLevelError(Long error) {
+        return error == SGFDxErrorCode.SGFDX_ERROR_DEVICE_NOT_FOUND
+                || error == SGFDxErrorCode.SGFDX_ERROR_LINE_DROPPED
+                || error == SGFDxErrorCode.SGFDX_ERROR_SYSLOAD_FAILED
+                || error == SGFDxErrorCode.SGFDX_ERROR_INITIALIZE_FAILED;
     }
 
     public List<DeviceDTO> getDevices() {
@@ -171,7 +211,7 @@ public class SecugenManager {
      * @return
      */
     public byte[] createTemplateFromCapturedImage(byte[] imageBuffer, int imageQuality) {
-        if (imageQuality == 0) {
+        if (imageBuffer == null || imageQuality == 0) {
             return new byte[0];
         }
         int[] maxTemplateSize = new int[1];
@@ -195,23 +235,29 @@ public class SecugenManager {
     /**
      * @param template1
      * @param template2
-     * @return 
+     * @return
      */
     public Boolean matchTemplate(byte[] template1, byte[] template2) {
+        if (template1 == null || template2 == null || template1.length == 0 || template2.length == 0) {
+            return false;
+        }
+        if (Math.abs(template1.length - template2.length) > 200) {
+            return false;
+        }
         boolean[] matched = new boolean[1];
         try {
             long sl = SGFDxSecurityLevel.SL_NORMAL;
-            if ((template1.length - template2.length) > 200) {
+            error = this.sgfplib.MatchTemplate(template1, template2, sl, matched);
+            if (error != SGFDxErrorCode.SGFDX_ERROR_NONE) {
                 return false;
             }
-            error = this.sgfplib.MatchTemplate(template1, template2, sl, matched);
-            //System.out.println("ERROR RATE: "+error +" " +" MATCHED: " + matched[0]);
         }catch(Exception ex){
-            ex.printStackTrace();
+            logger.error("Template comparison failed", ex);
+            return false;
         }
         return matched[0];
     }
-    
+
     /**
      * @param template1
      * @param template2
@@ -223,20 +269,16 @@ public class SecugenManager {
         HashMap<Integer, Boolean> matcher = new HashMap<>();
         try {
             long sl = SGFDxSecurityLevel.SL_NORMAL;
-            /*if ((template1.length - template2.length) > 200) {
-                return false;
-            }*/
             error = this.sgfplib.MatchTemplate(template1, template2, sl, matched);
             error = this.sgfplib.GetMatchingScore(template1, template2, score);
-            matcher.put(score[0], Boolean.valueOf(String.valueOf(matched)));
+            matcher.put(score[0], matched[0]);
             return matcher;
-            //System.out.println("ERROR RATE: "+error +" " +" MATCHED: " + matched[0]);
         }catch(Exception ex){
-            ex.printStackTrace();
+            logger.error("Template identification failed", ex);
         }
         return matcher;
     }
-    
+
     /**
      * @return
      */
@@ -255,7 +297,7 @@ public class SecugenManager {
             byte[] imageBuffer2 = this.captureFingerPrintImage();
             int imageQuality2 = this.getImageQuality(imageBuffer2);
             byte[] regTemplate2 = this.createTemplateFromCapturedImage(imageBuffer2, imageQuality2);
-            
+
             if (regTemplate != null && regTemplate2 != null) {
                 Boolean matched = this.matchTemplate(regTemplate, regTemplate2);
                 if (matched) {
@@ -315,7 +357,7 @@ public class SecugenManager {
         return biometric;
     }
 
-    
+
     /**
      * @param storedTemplate
      * @return
@@ -333,10 +375,10 @@ public class SecugenManager {
         byte[] imageBuffer2 = this.captureFingerPrintImage();
         int imageQuality2 = this.getImageQuality(imageBuffer2);
         byte[] regTemplate2 = this.createTemplateFromCapturedImage(imageBuffer2, imageQuality2);
-        
+
         Boolean matched = this.matchTemplate(regTemplate, storedTemplate);
         Boolean matched2 = this.matchTemplate(regTemplate2, storedTemplate);
-                        
+
         BiometricTemplateDTO biometricTemplateDTO = new BiometricTemplateDTO();
         if (matched && matched2) {
             /*biometricTemplate.setImage(imageQuality > imageQuality2 ? imageBuffer : imageBuffer2);
