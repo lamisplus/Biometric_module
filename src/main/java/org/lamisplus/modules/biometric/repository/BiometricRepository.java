@@ -135,7 +135,8 @@ public interface BiometricRepository extends JpaRepository<Biometric, String> {
     @Query(value="SELECT id, first_name AS firstName, surname FROM patient_person WHERE person_uuid=?1", nativeQuery = true)
     Optional<BiometricPerson> getBiometricPerson(String personUuid);
 
-    @Query(value="SELECT id, first_name AS firstName, surname AS surName, hospital_number AS hospitalNumber, sex " +
+    @Query(value="SELECT id, first_name AS firstName, surname AS surname, other_name AS otherName, " +
+            "hospital_number AS hospitalNumber, sex " +
             "FROM patient_person WHERE uuid=?1", nativeQuery = true)
     Optional<ClientIdentificationProject> getBiometricPersonData(String personUuid);
 

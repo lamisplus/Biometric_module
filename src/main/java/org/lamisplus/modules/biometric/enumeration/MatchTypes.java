@@ -1,7 +1,7 @@
 package org.lamisplus.modules.biometric.enumeration;
 
 public enum MatchTypes {
-    ImperfectMatch("Imperfect match"), PerfectMatch("Perfect match"), NoMatch("No match");
+    ImperfectMatch("Imperfect Match"), PerfectMatch("Perfect Match"), NoMatch("No Match");
     private String matchType;
 
     MatchTypes(String matchType)

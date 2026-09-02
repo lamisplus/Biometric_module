@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.lamisplus.modules.base.controller.apierror.EntityNotFoundException;
 import org.lamisplus.modules.biometric.domain.Biometric;
 import org.lamisplus.modules.biometric.domain.ClientIdentificationProject;
-import org.lamisplus.modules.biometric.domain.Deduplication;
 import org.lamisplus.modules.biometric.domain.dto.*;
 import org.lamisplus.modules.biometric.enumeration.ErrorCode;
 import org.lamisplus.modules.biometric.enumeration.MatchTypes;
@@ -12,42 +11,29 @@ import org.lamisplus.modules.biometric.repository.BiometricRepository;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SecugenService {
-    public static final int PAGE_SIZE = 2000;
     public static final String ERROR_MESSAGE = "ERROR";
     public static final String MATCH = "match";
     public static final String RECAPTURE_MESSAGE = "RECAPTURE_MESSAGE";
-    private static List<StoredBiometric> biometricsInFacility = new ArrayList<>();
     public static final int RECAPTURE = 0;
-    public static Integer totalPage=0;
-    public static final String WARNING = "WARNING";
-    public static final String RECAPTURE_NO_BASELINE = "No baseline biometrics for recapturing\nFingerprint exist but not same patient";
-    public static final String RECAPTURE_NO_MATCH_MESSAGE = "No baseline biometrics for recaptured finger";
     public static final String FINGERPRINT_ALREADY_CAPTURED = "Fingerprint already captured";
     public static final int IMAGE_QUALITY = 61;
+    public static final int MINIMUM_TEMPLATE_LENGTH = 200;
+    private static final String SUCCESS_MATCH_FOUND = "SUCCESS_MATCH_FOUND";
+    private static final String SUCCESS_NO_MATCH_FOUND = "SUCCESS_NO_MATCH_FOUND";
     private final SecugenManager secugenManager;
+    private final FingerprintMatcher fingerprintMatcher;
     private final BiometricRepository biometricRepository;
     private final CurrentUserOrganizationService facility;
-    public static String MATCHED_PERSON_UUID;
-    private static String TEMPLATE_TYPE;
-    private final String LEFT_MIDDLE_FINGER = "Left Middle Finger";
-    private final String LEFT_INDEX_FINGER = "Left Index Finger";
-    private final String LEFT_RING_FINGER = "Left Ring Finger";
-    private final String LEFT_THUMB = "Left Thumb";
-    private final String LEFT_LITTLE_FINGER =  "Left Little Finger";
-    private final String RIGHT_MIDDLE_FINGER = "Right Middle Finger";
-    private final String RIGHT_INDEX_FINGER = "Right Index Finger";
-    private final String RIGHT_THUMB = "Right Thumb";
-    private final String RIGHT_RING_FINGER =  "Right Ring Finger";
-    private final String RIGHT_LITTLE_FINGER =  "Right Little Finger";
+
     /**
      * Biometric enrollment
      * @param reader
@@ -57,10 +43,9 @@ public class SecugenService {
      * @return BiometricEnrollmentDto
      */
     public BiometricEnrollmentDto enrollment(String reader, Boolean identify, Boolean isNew, Boolean recapture, CaptureRequestDTO captureRequestDTO){
-        if(isNew){
+        if(Boolean.TRUE.equals(isNew)){
             //clear store
             this.emptyStoreByPersonId(captureRequestDTO.getPatientId());
-            if(!biometricsInFacility.isEmpty()) biometricsInFacility.clear();
         }
         BiometricEnrollmentDto biometric = getBiometricEnrollmentDto(captureRequestDTO);
 
@@ -79,94 +64,77 @@ public class SecugenService {
         if (error > 0L) {
             ErrorCode errorCode = ErrorCode.getErrorCode(error);
             biometric.getMessage().put(ERROR_MESSAGE, errorCode.getErrorName() + ": " + errorCode.getErrorMessage());
+            biometric.setType(BiometricEnrollmentDto.Type.ERROR);
             return biometric;
         }
 
         try {
             biometric = secugenManager.captureFingerPrint(biometric);
-            byte firstTwoChar = biometric.getTemplate()[0];
-            //String template = "46% OR AC%";
-            String template = Integer.toHexString(firstTwoChar)+"%";
-
-            if(!identify) {
-                BiometricStoreDTO.mergeCapturedBiometrics(captureRequestDTO.getPatientId(),
-                        captureRequestDTO.getCapturedBiometricsList());
-//                biometric.setMatchType(MatchTypes.NoMatch.getMatchType());
-            } else if(identify){
-                biometric.setClientIdentificationDTO(identify(reader, biometric));
-//                biometric.setMatchType(MatchTypes.PerfectMatch.getMatchType());
+            if (biometric.getType() == BiometricEnrollmentDto.Type.ERROR) {
                 return biometric;
             }
 
-            AtomicReference<Boolean> matched = new AtomicReference<>(false);
-            if (biometric.getTemplate().length > 200 && biometric.getMainImageQuality() >= IMAGE_QUALITY ) {
-                if(biometricsInFacility.isEmpty()) {
-                    biometricsInFacility = biometricRepository
-                            .findByFacilityIdWithTemplate(facility.getCurrentUserOrganization(), template);
-                }
+            if(Boolean.TRUE.equals(identify)) {
+                biometric.setClientIdentificationDTO(identify(reader, biometric));
+                return biometric;
+            }
 
-                //recapture
-                if(recapture) {
-                    String matchType = "";
-                    Optional<String> optionalPersonUuid = biometricRepository.getPersonUuid(captureRequestDTO.getPatientId());
-                    recaptureOrIdentify(true, optionalPersonUuid, template, biometric);
-                    log.info("Type is {}", BiometricEnrollmentDto.Type.values());
-//                    biometric.setMatchType(matchType);
-//                    log.info(" Match Type is {}", matchType);
-                }else {
-                    if(getMatch(biometricsInFacility, biometric.getTemplate())){
-                        this.addMessage(ERROR_MESSAGE, biometric, FINGERPRINT_ALREADY_CAPTURED);
-                        biometric.setType(BiometricEnrollmentDto.Type.ERROR);
-                        log.info(FINGERPRINT_ALREADY_CAPTURED);
-//                        biometric.setMatchType(MatchTypes.PerfectMatch.getMatchType());
-//                        biometric.setMatchType("No Match");
-                        return biometric;
-                    }
-                }
+            BiometricStoreDTO.mergeCapturedBiometrics(captureRequestDTO.getPatientId(),
+                    captureRequestDTO.getCapturedBiometricsList());
 
-                byte[] scannedTemplate = biometric.getTemplate();
-                if(biometric.getTemplate() != null && BiometricStoreDTO.hasCapturedBiometrics(biometric.getPatientId())) {
-                    final List<CapturedBiometricDto> capturedBiometricsListDTO =
-                            BiometricStoreDTO.getCapturedBiometrics(biometric.getPatientId());
-
-                    if(!recapture) {
-                        for (CapturedBiometricDto capturedBiometricsDTO : capturedBiometricsListDTO) {
-                            matched.set(secugenManager.matchTemplate(capturedBiometricsDTO.getTemplate(), biometric.getTemplate()));
-                            if (matched.get()) {
-                                return this.addMessage(ERROR_MESSAGE, biometric, "Fingerprint already captured");
-                            }
-                        }
-                    }
-                } else {
-                    biometric.setCapturedBiometricsList(new ArrayList<>());
-                }
-                biometric.getMessage().put("CAPTURING", "PROCEEDING...");
-                if(biometric.getType() == null) {
-                    biometric.setType(BiometricEnrollmentDto.Type.SUCCESS);
-                }
-                CapturedBiometricDto capturedBiometrics = new CapturedBiometricDto();
-                capturedBiometrics.setTemplate(scannedTemplate);
-                capturedBiometrics.setTemplateType(biometric.getTemplateType());
-                capturedBiometrics.setHashed(bcryptHash(biometric.getTemplate()));
-                capturedBiometrics.setImageQuality(biometric.getMainImageQuality());
-                capturedBiometrics.setMatchType(biometric.getMatchType());
-
-                List<CapturedBiometricDto> capturedBiometricsList =
-                        BiometricStoreDTO.addCapturedBiometrics(biometric.getPatientId(), capturedBiometrics);
-
-                biometric.setCapturedBiometricsList(capturedBiometricsList);
-                biometric.setTemplate(scannedTemplate);
-            }else {
+            if (!isUsableCapture(biometric)) {
                 return this.addMessage(ERROR_MESSAGE, biometric, null);
             }
 
+            byte[] scannedTemplate = biometric.getTemplate();
+            if(Boolean.TRUE.equals(recapture)) {
+                recaptureAgainstBaseline(captureRequestDTO.getPatientId(), biometric);
+            } else {
+                FingerprintMatch facilityMatch =
+                        fingerprintMatcher.matchAcrossFacility(facility.getCurrentUserOrganization(), scannedTemplate);
+                if (facilityMatch.isMatched()) {
+                    log.info(FINGERPRINT_ALREADY_CAPTURED);
+                    biometric.setMatchPersonUuid(facilityMatch.getPersonUuid());
+                    biometric.setMatchBiometricId(facilityMatch.getBiometricId());
+                    return this.addMessage(ERROR_MESSAGE, biometric, FINGERPRINT_ALREADY_CAPTURED);
+                }
+
+                List<CapturedBiometricDto> pendingCaptures =
+                        BiometricStoreDTO.getCapturedBiometrics(biometric.getPatientId());
+                if (fingerprintMatcher.matchesPendingCapture(pendingCaptures, scannedTemplate)) {
+                    return this.addMessage(ERROR_MESSAGE, biometric, FINGERPRINT_ALREADY_CAPTURED);
+                }
+            }
+
+            biometric.getMessage().put("CAPTURING", "PROCEEDING...");
+            if(biometric.getType() == null) {
+                biometric.setType(BiometricEnrollmentDto.Type.SUCCESS);
+            }
+            CapturedBiometricDto capturedBiometrics = new CapturedBiometricDto();
+            capturedBiometrics.setTemplate(scannedTemplate);
+            capturedBiometrics.setTemplateType(biometric.getTemplateType());
+            capturedBiometrics.setHashed(bcryptHash(scannedTemplate));
+            capturedBiometrics.setImageQuality(biometric.getMainImageQuality());
+            capturedBiometrics.setMatchType(biometric.getMatchType());
+            capturedBiometrics.setMatchPersonUuid(biometric.getMatchPersonUuid());
+            capturedBiometrics.setMatchBiometricId(biometric.getMatchBiometricId());
+
+            biometric.setCapturedBiometricsList(
+                    BiometricStoreDTO.addCapturedBiometrics(biometric.getPatientId(), capturedBiometrics));
+            biometric.setTemplate(scannedTemplate);
+
         } catch (Exception exception) {
-            exception.printStackTrace();
+            log.error("Error while capturing a fingerprint", exception);
             return this.addMessage(ERROR_MESSAGE, biometric, exception.getMessage());
         }
         return biometric;
     }
 
+    private boolean isUsableCapture(BiometricEnrollmentDto biometric) {
+        return biometric.getTemplate() != null
+                && biometric.getTemplate().length > MINIMUM_TEMPLATE_LENGTH
+                && biometric.getMainImageQuality() >= IMAGE_QUALITY;
+    }
 
     /**
      * Checking if scanner is set
@@ -220,11 +188,14 @@ public class SecugenService {
      * @return BiometricEnrollmentDto
      */
     private BiometricEnrollmentDto addMessage(String messageKey,BiometricEnrollmentDto biometricEnrollmentDto, String customMessage){
+        if (biometricEnrollmentDto.getMessage() == null) {
+            biometricEnrollmentDto.setMessage(new HashMap<>());
+        }
         int imageQuality = biometricEnrollmentDto.getMainImageQuality();
-        int templateLength = biometricEnrollmentDto.getTemplate().length;
+        int templateLength = biometricEnrollmentDto.getTemplate() == null ? 0 : biometricEnrollmentDto.getTemplate().length;
         biometricEnrollmentDto.getMessage().put(messageKey, "ERROR WHILE CAPTURING... " +
-                "\nImage Quality: " + (imageQuality < 61 ? "Bad - " + imageQuality : "Good - " + imageQuality) +
-                "\nTemplate Length: " + (templateLength < 200 ? "Bad - " + templateLength : "Good - " + templateLength) +
+                "\nImage Quality: " + (imageQuality < IMAGE_QUALITY ? "Bad - " + imageQuality : "Good - " + imageQuality) +
+                "\nTemplate Length: " + (templateLength < MINIMUM_TEMPLATE_LENGTH ? "Bad - " + templateLength : "Good - " + templateLength) +
                 "\n" + (customMessage != null ? customMessage : "")
         );
         biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.ERROR);
@@ -238,79 +209,6 @@ public class SecugenService {
      */
     public Boolean emptyStoreByPersonId(Long personId){
         return BiometricStoreDTO.removePatient(personId);
-    }
-
-    /**
-     * check for biometric match
-     * @param storedBiometrics
-     * @param scannedTemplate
-     * @return Boolean
-     */
-    public Boolean getMatch(List<StoredBiometric> storedBiometrics, byte[] scannedTemplate) {
-        Boolean matched = Boolean.FALSE;
-        MATCHED_PERSON_UUID = null;
-        for (StoredBiometric biometric : storedBiometrics) {
-            if(matched) break;
-            if(null != biometric.getPersonUuid()) {
-                MATCHED_PERSON_UUID = biometric.getPersonUuid();
-                log.info("MATCHED_PERSON_UUID {}", MATCHED_PERSON_UUID);
-            }
-            if (biometric.getLeftMiddleFinger() != null && biometric.getLeftMiddleFinger().length != 0) {
-                matched = secugenManager.matchTemplate(biometric.getLeftMiddleFinger(), scannedTemplate);
-                TEMPLATE_TYPE = LEFT_MIDDLE_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getLeftIndexFinger() != null && biometric.getLeftIndexFinger().length != 0) {
-                matched = secugenManager.matchTemplate(biometric.getLeftIndexFinger(), scannedTemplate);
-                TEMPLATE_TYPE = LEFT_INDEX_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getLeftRingFinger() != null && biometric.getLeftRingFinger().length != 0) {
-                matched = secugenManager.matchTemplate(biometric.getLeftRingFinger(), scannedTemplate);
-                TEMPLATE_TYPE = LEFT_RING_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getLeftThumb() != null && biometric.getLeftThumb().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getLeftThumb(), scannedTemplate);
-                TEMPLATE_TYPE = LEFT_THUMB;
-                if(matched) continue;
-            }
-            if (biometric.getLeftLittleFinger() != null && biometric.getLeftLittleFinger().length != 0) {
-                matched = secugenManager.matchTemplate(biometric.getLeftLittleFinger(), scannedTemplate);
-                TEMPLATE_TYPE = LEFT_LITTLE_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getRightIndexFinger() != null && biometric.getRightIndexFinger().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getRightIndexFinger(), scannedTemplate);
-                TEMPLATE_TYPE = RIGHT_INDEX_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getRightMiddleFinger() != null && biometric.getRightMiddleFinger().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getRightMiddleFinger(), scannedTemplate);
-                TEMPLATE_TYPE = RIGHT_MIDDLE_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getRightThumb() != null && biometric.getRightThumb().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getRightThumb(), scannedTemplate);
-                TEMPLATE_TYPE = RIGHT_THUMB;
-                if(matched) continue;
-            }
-            if (biometric.getRightRingFinger() != null && biometric.getRightRingFinger().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getRightRingFinger(), scannedTemplate);
-                TEMPLATE_TYPE = RIGHT_RING_FINGER;
-                if(matched) continue;
-            }
-            if (biometric.getRightLittleFinger() != null && biometric.getRightLittleFinger().length != 0) {
-                matched =  secugenManager.matchTemplate(biometric.getRightLittleFinger(), scannedTemplate);
-                TEMPLATE_TYPE = RIGHT_LITTLE_FINGER;
-            }
-        }
-        return matched;
-    }
-
-    private Boolean setMatch(byte[] capturedFinger, byte[] dbPrint, String personUuid){
-        MATCHED_PERSON_UUID = personUuid;
-        return secugenManager.matchTemplate(capturedFinger, dbPrint);
     }
 
     /**
@@ -329,124 +227,89 @@ public class SecugenService {
      * @return ClientIdentificationDTO
      */
     public ClientIdentificationDTO identify(String reader, BiometricEnrollmentDto biometricEnrollmentDto){
-        //clear if not empty
-        if(!biometricsInFacility.isEmpty())biometricsInFacility.clear();
         if (this.scannerIsNotSet(reader)) {
             throw new EntityNotFoundException(Biometric.class, "Scanner", "Scanner");
         }
-        log.info("level 1 ...");
-        BiometricEnrollmentDto biometric = biometricEnrollmentDto != null ? biometricEnrollmentDto : secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
-        byte firstTwoChar = biometric.getTemplate()[0];
-        //String template = "46% OR AC%";
-        String template = Integer.toHexString(firstTwoChar)+"%";
-        log.info("level 2 ...");
-        biometricsInFacility = biometricRepository
-                    .findByFacilityIdWithTemplate(facility.getCurrentUserOrganization(), template);
-        log.info("level 3 ...");
-        if(getMatch(biometricsInFacility, biometric.getTemplate())){
-            if (MATCHED_PERSON_UUID != null) {
-                log.info("level 003 ...");
-                Optional<ClientIdentificationProject> clientId = biometricRepository.getBiometricPersonData(MATCHED_PERSON_UUID);
-                if (clientId.isPresent()) {
-                    ClientIdentificationProject clientIdentificationProject = clientId.get();
-                    ClientIdentificationDTO clientIdentification = setClientDetails(clientIdentificationProject);
-                    clientIdentification.setMessageType("SUCCESS_MATCH_FOUND");
-                    clientIdentification.setMessage("Client identified");
-                    clientIdentification.setPersonUuid(MATCHED_PERSON_UUID);
-                    return clientIdentification;
-                }
-            }
+        BiometricEnrollmentDto biometric = biometricEnrollmentDto != null
+                ? biometricEnrollmentDto
+                : secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
+
+        if (biometric.getTemplate() == null || biometric.getTemplate().length == 0) {
+            return noMatchIdentification();
         }
-        log.info("level 4 ...");
+
+        FingerprintMatch match =
+                fingerprintMatcher.matchAcrossFacility(facility.getCurrentUserOrganization(), biometric.getTemplate());
+        if (match.isMatched()) {
+            Optional<ClientIdentificationProject> clientId = biometricRepository.getBiometricPersonData(match.getPersonUuid());
+            if (clientId.isPresent()) {
+                ClientIdentificationDTO clientIdentification = setClientDetails(clientId.get());
+                clientIdentification.setMessageType(SUCCESS_MATCH_FOUND);
+                clientIdentification.setMessage("Client identified");
+                clientIdentification.setPersonUuid(match.getPersonUuid());
+                return clientIdentification;
+            }
+            log.warn("Fingerprint matched person {} but no patient record was found", match.getPersonUuid());
+        }
+        return noMatchIdentification();
+    }
+
+    private ClientIdentificationDTO noMatchIdentification() {
         ClientIdentificationDTO clientIdentificationDTO = new ClientIdentificationDTO();
-        clientIdentificationDTO.setMessageType("SUCCESS_NO_MATCH_FOUND");
+        clientIdentificationDTO.setMessageType(SUCCESS_NO_MATCH_FOUND);
         clientIdentificationDTO.setMessage("Could not identify clients");
         return clientIdentificationDTO;
     }
 
     private ClientIdentificationDTO setClientDetails(ClientIdentificationProject clientIdentificationProject) {
         ClientIdentificationDTO clientIdentificationDTO = new ClientIdentificationDTO();
-        clientIdentificationDTO.setFirstName(clientIdentificationProject.getFirstName());
-        clientIdentificationDTO.setSex(clientIdentificationProject.getSex());
         clientIdentificationDTO.setId(clientIdentificationProject.getId());
-        clientIdentificationDTO.setSurname(clientIdentificationDTO.getSurname());
-        clientIdentificationDTO.setHospitalNumber(clientIdentificationDTO.getHospitalNumber());
-
+        clientIdentificationDTO.setFirstName(clientIdentificationProject.getFirstName());
+        clientIdentificationDTO.setSurname(clientIdentificationProject.getSurname());
+        clientIdentificationDTO.setOtherName(clientIdentificationProject.getOtherName());
+        clientIdentificationDTO.setHospitalNumber(clientIdentificationProject.getHospitalNumber());
+        clientIdentificationDTO.setSex(clientIdentificationProject.getSex());
         return clientIdentificationDTO;
     }
 
+    private void recaptureAgainstBaseline(Long patientId, BiometricEnrollmentDto biometricEnrollmentDto){
+        Optional<String> optionalPersonUuid = biometricRepository.getPersonUuid(patientId);
+        if (!optionalPersonUuid.isPresent()) {
+            throw new EntityNotFoundException(Biometric.class, "patientId", "" + patientId);
+        }
+        String personUuid = optionalPersonUuid.get();
+        biometricEnrollmentDto.setMatchPersonUuid(personUuid);
 
-    /**
-         * Recapture or identify Person.
-         * @param recapture
-         * @param optionalPersonUuid
-         * @param biometricEnrollmentDto
-         * @return BiometricEnrollmentDto
-         */
-    private BiometricEnrollmentDto recaptureOrIdentify(Boolean recapture,
-                                        Optional<String> optionalPersonUuid,
-                                        String template,
-                                        BiometricEnrollmentDto biometricEnrollmentDto){
-        if(recapture) {
-            HashMap<String, String> mapDetails = new HashMap<>();
-            String personUuid = optionalPersonUuid.get();
-            List<StoredBiometric> personBiometrics = biometricRepository.findByFacilityIdWithTemplateAndPersonUuid(facility.getCurrentUserOrganization(),
-                    personUuid, RECAPTURE, template);
-            if (!personBiometrics.isEmpty()) {
-                if (getMatch(personBiometrics, biometricEnrollmentDto.getTemplate())) {
-                    biometricEnrollmentDto.setMatch(true);
-                    if (TEMPLATE_TYPE.equalsIgnoreCase(biometricEnrollmentDto.getTemplateType())) {
-                        log.info("Perfect match...");
-//                        biometricEnrollmentDto.setMatchType(MatchTypes.PerfectMatch.getMatchType());
-                        biometricEnrollmentDto.getMessage().put(MATCH, "Perfect...");
-                        biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.SUCCESS);
-                        biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "SUCCESSFULLY RECAPTURED, PERFECT MATCH");
-                        biometricEnrollmentDto.setMatchType("Perfect Match");
-                        biometricEnrollmentDto.setMatchPersonUuid(personUuid);
-                        biometricEnrollmentDto.setMatchBiometricId(biometricEnrollmentDto.getMatchBiometricId());
+        FingerprintMatch match = fingerprintMatcher.matchAgainstPerson(facility.getCurrentUserOrganization(),
+                personUuid, RECAPTURE, biometricEnrollmentDto.getTemplate(), biometricEnrollmentDto.getTemplateType());
 
-
-                        return biometricEnrollmentDto;
-    
-                    } else {
-                        log.info("Imperfect match...");
-//                        biometricEnrollmentDto.setMatchType(MatchTypes.ImperfectMatch.getMatchType());
-                        biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "SUCCESSFULLY RECAPTURED, IMPERFECT MATCH");
-                        biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.WARNING);
-                        biometricEnrollmentDto.getMessage().put(MATCH, "Imperfect...");
-                        biometricEnrollmentDto.setMatchType("Imperfect Match");
-                        biometricEnrollmentDto.setMatchPersonUuid(personUuid);
-                        biometricEnrollmentDto.setMatchBiometricId(biometricEnrollmentDto.getMatchBiometricId());
-
-                        String key = "BASELINE_" + biometricEnrollmentDto.getTemplateType().toUpperCase().replaceAll(" ", "_");
-                        String value = "RECAPTURE_" + TEMPLATE_TYPE.toUpperCase().replaceAll(" ", "_");
-                        mapDetails.put(key, value);
-                        Deduplication deduplication = new Deduplication();
-                        if(biometricEnrollmentDto.getDeduplication() != null) {
-                            deduplication = biometricEnrollmentDto.getDeduplication();
-                        }
-
-                        if(deduplication.getMapDetails()!= null){
-                            HashMap<String, String> addedDetails = deduplication.getMapDetails();
-                            addedDetails.put(key, value);
-                            deduplication.setDetails(addedDetails);
-                            //deduplication.getImperfectMatchCount();
-                        }else {
-                            deduplication.setDeduplicationDate(LocalDate.now());
-                        }
-                        return biometricEnrollmentDto;
-                    }
-                }
-            }
+        if (!match.isMatched()) {
             log.info("no match...");
+            biometricEnrollmentDto.setMatch(false);
             biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.WARNING);
             biometricEnrollmentDto.getMessage().put(MATCH, "Biometric not found...");
             biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "NO MATCH...");
-            biometricEnrollmentDto.setMatchType("No Match");
-            biometricEnrollmentDto.setMatchPersonUuid(personUuid);
-            biometricEnrollmentDto.setMatchBiometricId(biometricEnrollmentDto.getMatchBiometricId());
-
+            biometricEnrollmentDto.setMatchType(MatchTypes.NoMatch.getMatchType());
+            return;
         }
-        return biometricEnrollmentDto;
+
+        biometricEnrollmentDto.setMatch(true);
+        biometricEnrollmentDto.setMatchBiometricId(match.getBiometricId());
+        boolean sameFinger = match.getTemplateType() != null
+                && match.getTemplateType().equalsIgnoreCase(biometricEnrollmentDto.getTemplateType());
+
+        if (sameFinger) {
+            log.info("Perfect match...");
+            biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.SUCCESS);
+            biometricEnrollmentDto.getMessage().put(MATCH, "Perfect...");
+            biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "SUCCESSFULLY RECAPTURED, PERFECT MATCH");
+            biometricEnrollmentDto.setMatchType(MatchTypes.PerfectMatch.getMatchType());
+        } else {
+            log.info("Imperfect match...");
+            biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.WARNING);
+            biometricEnrollmentDto.getMessage().put(MATCH, "Imperfect...");
+            biometricEnrollmentDto.getMessage().put(RECAPTURE_MESSAGE, "SUCCESSFULLY RECAPTURED, IMPERFECT MATCH");
+            biometricEnrollmentDto.setMatchType(MatchTypes.ImperfectMatch.getMatchType());
+        }
     }
 }
