@@ -69,13 +69,14 @@ public class BiometricTemplateIndex {
     @PostConstruct
     void open() {
         try {
+            Class.forName("org.h2.Driver");
             keepAlive = DriverManager.getConnection(INDEX_URL);
             try (Statement statement = keepAlive.createStatement()) {
                 statement.execute(CREATE_TABLE);
                 statement.execute(CREATE_LENGTH_INDEX);
                 statement.execute(CREATE_PERSON_INDEX);
             }
-        } catch (SQLException exception) {
+        } catch (SQLException | ClassNotFoundException exception) {
             log.error("Could not open the biometric template index", exception);
         }
     }
