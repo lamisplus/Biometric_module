@@ -118,20 +118,23 @@ const EditBiometricDevice = (props) => {
     const AddDevice = e => {
         e.preventDefault()
         if(validate()){
+            setLoading(true)
             axios
             .put(`${baseUrl}biometrics/device/${details.id}?active=${details.active}`,details,
             { headers: {"Authorization" : `Bearer ${token}`} }
             )
-            .then((response) => {                
-                props.loadBiometricDevices()               
+            .then((response) => {
+                setLoading(false)
+                props.loadBiometricDevices()
                 toast.success("Biometric Device Updated Successfully!")
                 setDetails({active: "", name:"", url:"", port:"", type:""})
-                props.togglestatus()                  
+                props.togglestatus()
             })
-            .catch((error) => { 
-                toast.error("Something went wrong. Please try again...")   
+            .catch((error) => {
+                setLoading(false)
+                toast.error("Something went wrong. Please try again...")
             });
-        }  
+        }
     }
 
     return (
