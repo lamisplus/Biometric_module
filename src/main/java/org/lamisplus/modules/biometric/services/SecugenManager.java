@@ -80,6 +80,7 @@ public class SecugenManager {
 
         this.deviceInfo = openedDeviceInfo;
         this.openedDeviceName = sgFDxDeviceName;
+        this.sgfplib.SetTemplateFormat(SGFDxTemplateFormat.TEMPLATE_FORMAT_ISO19794);
         this.secugenProperties.setTimeout(180000L);
         return error;
     }
@@ -166,6 +167,9 @@ public class SecugenManager {
             }
             logger.info("Image capture error: " + error);
             if (isDeviceLevelError(error)) {
+                if (attempt < CAPTURE_RETRIES && this.reopen()) {
+                    continue;
+                }
                 this.release();
                 return null;
             }
@@ -174,10 +178,26 @@ public class SecugenManager {
     }
 
     private boolean isDeviceLevelError(Long error) {
-        return error == SGFDxErrorCode.SGFDX_ERROR_DEVICE_NOT_FOUND
+        return error == SGFDxErrorCode.SGFDX_ERROR_FUNCTION_FAILED
+                || error == SGFDxErrorCode.SGFDX_ERROR_DEVICE_NOT_FOUND
                 || error == SGFDxErrorCode.SGFDX_ERROR_LINE_DROPPED
                 || error == SGFDxErrorCode.SGFDX_ERROR_SYSLOAD_FAILED
-                || error == SGFDxErrorCode.SGFDX_ERROR_INITIALIZE_FAILED;
+                || error == SGFDxErrorCode.SGFDX_ERROR_INITIALIZE_FAILED
+                || error == SGFDxErrorCode.SGFDX_ERROR_DRVLOAD_FAILED
+                || error == SGFDxErrorCode.SGFDX_ERROR_LACK_OF_BANDWIDTH
+                || error == SGFDxErrorCode.SGFDX_ERROR_DEV_ALREADY_OPEN;
+    }
+
+    private synchronized boolean reopen() {
+        Long previouslyOpened = this.openedDeviceName;
+        this.release();
+        if (previouslyOpened == null) {
+            return false;
+        }
+        logger.info("Reopening the fingerprint reader after a device level failure");
+        return this.boot(previouslyOpened) == SGFDxErrorCode.SGFDX_ERROR_NONE
+                && this.sgfplib != null
+                && this.deviceInfo != null;
     }
 
     public List<DeviceDTO> getDevices() {
