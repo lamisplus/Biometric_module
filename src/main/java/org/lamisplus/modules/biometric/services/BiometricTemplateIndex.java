@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import org.h2.jdbcx.JdbcDataSource;
+
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -59,6 +61,7 @@ public class BiometricTemplateIndex {
     private final Map<Long, Long> lastSynchronisedAt = new ConcurrentHashMap<>();
     private final Map<Long, LocalDateTime> watermark = new ConcurrentHashMap<>();
 
+    private JdbcDataSource dataSource;
     private Connection keepAlive;
 
     @Autowired
@@ -69,16 +72,26 @@ public class BiometricTemplateIndex {
     @PostConstruct
     void open() {
         try {
-            Class.forName("org.h2.Driver");
-            keepAlive = DriverManager.getConnection(INDEX_URL);
+            JdbcDataSource h2DataSource = new JdbcDataSource();
+            h2DataSource.setURL(INDEX_URL);
+            keepAlive = h2DataSource.getConnection();
             try (Statement statement = keepAlive.createStatement()) {
                 statement.execute(CREATE_TABLE);
                 statement.execute(CREATE_LENGTH_INDEX);
                 statement.execute(CREATE_PERSON_INDEX);
             }
-        } catch (SQLException | ClassNotFoundException exception) {
-            log.error("Could not open the biometric template index", exception);
+            dataSource = h2DataSource;
+        } catch (Exception exception) {
+            dataSource = null;
+            closeQuietly(keepAlive);
+            keepAlive = null;
+            log.error("Could not open the biometric template index; fingerprint matching will read "
+                    + "candidates straight from the database until this is resolved", exception);
         }
+    }
+
+    public boolean isAvailable() {
+        return dataSource != null && keepAlive != null;
     }
 
     @PreDestroy
@@ -116,7 +129,7 @@ public class BiometricTemplateIndex {
         }
         lastSynchronisedAt.remove(facilityId);
         watermark.remove(facilityId);
-        try (Connection connection = DriverManager.getConnection(INDEX_URL);
+        try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(DELETE_BY_FACILITY)) {
             statement.setLong(1, facilityId);
             statement.executeUpdate();
@@ -129,7 +142,7 @@ public class BiometricTemplateIndex {
         if (biometrics == null || biometrics.isEmpty()) {
             return;
         }
-        try (Connection connection = DriverManager.getConnection(INDEX_URL)) {
+        try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement upsert = connection.prepareStatement(UPSERT);
                  PreparedStatement delete = connection.prepareStatement(DELETE_BY_ID)) {
@@ -159,7 +172,7 @@ public class BiometricTemplateIndex {
         if (biometricIds == null || biometricIds.isEmpty()) {
             return;
         }
-        try (Connection connection = DriverManager.getConnection(INDEX_URL);
+        try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(DELETE_BY_ID)) {
             for (String biometricId : biometricIds) {
                 if (biometricId != null) {
@@ -178,7 +191,10 @@ public class BiometricTemplateIndex {
             return new ArrayList<>();
         }
         int scannedLength = scannedTemplate.length;
-        try (Connection connection = DriverManager.getConnection(INDEX_URL);
+        if (!isAvailable()) {
+            return databaseCandidates(facilityId, scannedLength, null, null, null);
+        }
+        try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(FACILITY_CANDIDATES)) {
             statement.setLong(1, facilityId);
             statement.setInt(2, scannedLength + LENGTH_TOLERANCE);
@@ -186,8 +202,49 @@ public class BiometricTemplateIndex {
             return read(statement);
         } catch (SQLException exception) {
             log.error("Could not read facility match candidates for facility {}", facilityId, exception);
-            return new ArrayList<>();
+            return databaseCandidates(facilityId, scannedLength, null, null, null);
         }
+    }
+
+    private List<IndexedTemplate> databaseCandidates(Long facilityId, int scannedLength, String personUuid,
+                                                     Integer recapture, String expectedTemplateType) {
+        List<IndexedTemplate> candidates = new ArrayList<>();
+        try {
+            for (Object[] row : biometricRepository.findTemplatesForIndex(facilityId)) {
+                byte[] template = (byte[]) row[4];
+                Integer rowRecapture = toInteger(row[3]);
+                if (row[0] == null || template == null || template.length == 0) {
+                    continue;
+                }
+                if (template.length > scannedLength + LENGTH_TOLERANCE) {
+                    continue;
+                }
+                if (personUuid != null && !personUuid.equals(row[1])) {
+                    continue;
+                }
+                if (recapture != null && !recapture.equals(rowRecapture == null ? 0 : rowRecapture)) {
+                    continue;
+                }
+                candidates.add(new IndexedTemplate((String) row[0], (String) row[1], (String) row[2],
+                        rowRecapture == null ? 0 : rowRecapture, template));
+            }
+        } catch (Exception exception) {
+            log.error("Could not read match candidates from the database for facility {}", facilityId, exception);
+            return candidates;
+        }
+        candidates.sort((left, right) -> {
+            if (expectedTemplateType != null) {
+                int leftExpected = expectedTemplateType.equals(left.getTemplateType()) ? 0 : 1;
+                int rightExpected = expectedTemplateType.equals(right.getTemplateType()) ? 0 : 1;
+                if (leftExpected != rightExpected) {
+                    return leftExpected - rightExpected;
+                }
+            }
+            int byLength = Math.abs(left.getTemplate().length - scannedLength)
+                    - Math.abs(right.getTemplate().length - scannedLength);
+            return byLength != 0 ? byLength : left.getBiometricId().compareTo(right.getBiometricId());
+        });
+        return candidates;
     }
 
     public List<IndexedTemplate> personCandidates(Long facilityId, String personUuid, Integer recapture,
@@ -196,7 +253,10 @@ public class BiometricTemplateIndex {
             return new ArrayList<>();
         }
         int scannedLength = scannedTemplate.length;
-        try (Connection connection = DriverManager.getConnection(INDEX_URL);
+        if (!isAvailable()) {
+            return databaseCandidates(facilityId, scannedLength, personUuid, recapture, expectedTemplateType);
+        }
+        try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(PERSON_CANDIDATES)) {
             statement.setLong(1, facilityId);
             statement.setString(2, personUuid);
@@ -207,12 +267,12 @@ public class BiometricTemplateIndex {
             return read(statement);
         } catch (SQLException exception) {
             log.error("Could not read match candidates for person {}", personUuid, exception);
-            return new ArrayList<>();
+            return databaseCandidates(facilityId, scannedLength, personUuid, recapture, expectedTemplateType);
         }
     }
 
     private void apply(Long facilityId, List<Object[]> rows) throws SQLException {
-        try (Connection connection = DriverManager.getConnection(INDEX_URL)) {
+        try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement upsert = connection.prepareStatement(UPSERT);
                  PreparedStatement delete = connection.prepareStatement(DELETE_BY_ID)) {
