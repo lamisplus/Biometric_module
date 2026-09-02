@@ -231,9 +231,12 @@ public class SecugenService {
         if (this.scannerIsNotSet(reader)) {
             throw new EntityNotFoundException(Biometric.class, "Scanner", "Scanner");
         }
-        BiometricEnrollmentDto biometric = biometricEnrollmentDto != null
-                ? biometricEnrollmentDto
-                : secugenManager.captureFingerPrint(new BiometricEnrollmentDto());
+        BiometricEnrollmentDto biometric = biometricEnrollmentDto;
+        if (biometric == null) {
+            biometric = new BiometricEnrollmentDto();
+            biometric.setMessage(new HashMap<>());
+            biometric = secugenManager.captureFingerPrint(biometric);
+        }
 
         if (biometric.getTemplate() == null || biometric.getTemplate().length == 0) {
             return noMatchIdentification();
