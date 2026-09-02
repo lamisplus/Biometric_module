@@ -306,4 +306,52 @@
         </sql>
     </changeSet>
 
+    <changeSet failOnError="false" author="Joshua Gabriel" id="biometrics-0016">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists indexName="ix_biometric_facility_archived"/>
+            </not>
+        </preConditions>
+        <sql>
+            CREATE INDEX IF NOT EXISTS ix_biometric_facility_archived
+                ON biometric (facility_id, archived);
+        </sql>
+    </changeSet>
+
+    <changeSet failOnError="false" author="Joshua Gabriel" id="biometrics-0017">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists indexName="ix_biometric_facility_modified"/>
+            </not>
+        </preConditions>
+        <sql>
+            CREATE INDEX IF NOT EXISTS ix_biometric_facility_modified
+                ON biometric (facility_id, last_modified_date);
+        </sql>
+    </changeSet>
+
+    <changeSet failOnError="false" author="Joshua Gabriel" id="biometrics-0018">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists indexName="ix_biometric_person_recapture"/>
+            </not>
+        </preConditions>
+        <sql>
+            CREATE INDEX IF NOT EXISTS ix_biometric_person_recapture
+                ON biometric (person_uuid, recapture, archived);
+        </sql>
+    </changeSet>
+
+    <changeSet failOnError="false" author="Joshua Gabriel" id="biometrics-0019">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <indexExists indexName="ix_deduplication_person"/>
+            </not>
+        </preConditions>
+        <sql>
+            CREATE INDEX IF NOT EXISTS ix_deduplication_person
+                ON deduplication (person_uuid, deduplication_date);
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

@@ -82,6 +82,14 @@ public interface BiometricRepository extends JpaRepository<Biometric, String> {
     Page<StoredBiometric> findByFacilityIdWithTemplate(Long facilityId, String template, Pageable pageable);
 
 
+    @Query(value="SELECT id, person_uuid, template_type, recapture, template, archived " +
+            "FROM biometric WHERE facility_id=?1 AND archived=0", nativeQuery = true)
+    List<Object[]> findTemplatesForIndex(Long facilityId);
+
+    @Query(value="SELECT id, person_uuid, template_type, recapture, template, archived " +
+            "FROM biometric WHERE facility_id=?1 AND last_modified_date > ?2", nativeQuery = true)
+    List<Object[]> findTemplatesForIndexModifiedSince(Long facilityId, LocalDateTime since);
+
     @Query(value="SELECT uuid FROM patient_person WHERE id=?1", nativeQuery = true)
     Optional<String> getPersonUuid(Long patientId);
 
