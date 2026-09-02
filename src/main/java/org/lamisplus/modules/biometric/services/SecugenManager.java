@@ -47,7 +47,8 @@ public class SecugenManager {
      */
     public synchronized Long boot(long sgFDxDeviceName) {
         if (this.sgfplib != null && this.deviceInfo != null
-                && this.openedDeviceName != null && this.openedDeviceName == sgFDxDeviceName) {
+                && this.openedDeviceName != null && this.openedDeviceName == sgFDxDeviceName
+                && this.refreshDeviceInfo()) {
             this.secugenProperties.setTimeout(180000L);
             return SGFDxErrorCode.SGFDX_ERROR_NONE;
         }
@@ -81,6 +82,20 @@ public class SecugenManager {
         this.openedDeviceName = sgFDxDeviceName;
         this.secugenProperties.setTimeout(180000L);
         return error;
+    }
+
+    private boolean refreshDeviceInfo() {
+        SGDeviceInfoParam attachedDeviceInfo = new SGDeviceInfoParam();
+        try {
+            if (this.sgfplib.GetDeviceInfo(attachedDeviceInfo) != SGFDxErrorCode.SGFDX_ERROR_NONE) {
+                return false;
+            }
+        } catch (Exception exception) {
+            logger.warn("Reader did not answer a device information request: " + exception.getMessage());
+            return false;
+        }
+        this.deviceInfo = attachedDeviceInfo;
+        return true;
     }
 
     public Long boot() {
