@@ -26,11 +26,9 @@ public class PIMSController {
 	}
 	
 	@PostMapping(BASE_URL_VERSION_ONE + "/config")
-	public ResponseEntity<PimsConfig> registerConfig(
-			@RequestParam  (name ="username") String username,
-			@RequestParam(name = "password") String password,
-			@RequestParam(name = "url") String url){
-		return ResponseEntity.ok (pimsService.registerPimsConfig (username, password, url));
+	public ResponseEntity<PimsConfig> registerConfig(@RequestBody PimsConfig config){
+		return ResponseEntity.ok (pimsService.registerPimsConfig (
+				config.getUsername (), config.getPassword (), config.getUrl ()));
 	}
 	@PutMapping(BASE_URL_VERSION_ONE + "/config/{id}")
 	public ResponseEntity<PimsConfig> updateConfig(

@@ -94,20 +94,14 @@ const Configuration = (props) => {
     e.preventDefault();
     if (validate()) {
       setSaving(true);
-      console.log(patDetails);
       axios
-        .post(
-          `${baseUrl}pims/config?username=${patDetails.username}&password=${patDetails.password}&url=${patDetails.url}`,
-          patDetails,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        )
+        .post(`${baseUrl}pims/config`, patDetails, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         .then((response) => {
           setSaving(false);
-          // props.NdrSetup();
-          toast.success("NDR Setup Successfully saved");
-          //props.toggleModal();
+          toast.success("PIMS Setup Successfully saved");
+          setPatDetails(defaultValues);
           getPIMSConfigurations();
         })
         .catch((error) => {
