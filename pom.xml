@@ -26,6 +26,9 @@
 		<build.revision>1.0.0</build.revision>
 		<audit4j.version>2.5.0</audit4j.version>
 		<maven.build.timestamp.format>yyyy-MM-dd'T'HH:mm:ss'Z'</maven.build.timestamp.format>
+		<node.version>v18.20.8</node.version>
+		<npm.version>10.8.2</npm.version>
+		<skip.frontend>false</skip.frontend>
 	</properties>
 
 	<dependencyManagement>
@@ -268,35 +271,40 @@
 				<groupId>com.github.eirslett</groupId>
 				<artifactId>frontend-maven-plugin</artifactId>
 				<version>1.12.1</version>
+				<configuration>
+					<skip>${skip.frontend}</skip>
+					<nodeVersion>${node.version}</nodeVersion>
+					<npmVersion>${npm.version}</npmVersion>
+					<installDirectory>${project.basedir}</installDirectory>
+				</configuration>
 				<executions>
-					<!--<execution>
+					<execution>
 						<id>install node and npm</id>
 						<goals>
 							<goal>install-node-and-npm</goal>
 						</goals>
-						<configuration>
-							<nodeVersion>v16.13.2</nodeVersion>
-							<npmVersion>8.1.2</npmVersion>
-						</configuration>
+						<phase>generate-resources</phase>
 					</execution>
 					<execution>
 						<id>npm install</id>
 						<goals>
 							<goal>npm</goal>
 						</goals>
+						<phase>generate-resources</phase>
 						<configuration>
 							<arguments>install</arguments>
 						</configuration>
-					</execution>-->
-					<!--<execution>
+					</execution>
+					<execution>
 						<id>npm run build</id>
 						<goals>
 							<goal>npm</goal>
 						</goals>
+						<phase>generate-resources</phase>
 						<configuration>
 							<arguments>run build</arguments>
 						</configuration>
-					</execution>-->
+					</execution>
 				</executions>
 			</plugin>
 		</plugins>
