@@ -76,12 +76,9 @@ const useStyles = makeStyles((theme) => ({
     alignItems: "center",
   },
 }));
-//Device NAme and ID for delete
-let deviceName = "";
-
 const BiometricList = (props) => {
   let history = useHistory();
-  const [collectModal, setcollectModal] = useState([]);
+  const [collectModal, setcollectModal] = useState({});
   const [biometricList, setBiometricList] = useState([]);
   const classes = useStyles();
   const [addNewDeviceModal, setAddNewDeviceModal] = useState(false); //New Device   Modal
@@ -92,6 +89,7 @@ const BiometricList = (props) => {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [deviceId, setdeviceId] = useState("");
+  const [deviceName, setDeviceName] = useState("");
   const [permissions, setPermissions] = useState([]);
 
   const [showModal, setShowModal] = React.useState(false);
@@ -109,10 +107,12 @@ const BiometricList = (props) => {
       })
       .then((response) => {
         setLoading(false);
-        setBiometricList(response.data);
+        setBiometricList(Array.isArray(response.data) ? response.data : []);
       })
       .catch((error) => {
         setLoading(false);
+        setBiometricList([]);
+        toast.error("Could not load the biometric devices. Please try again...");
       });
   }
   //Get list of Permissions
@@ -124,13 +124,14 @@ const BiometricList = (props) => {
       .then((response) => {
         setPermissions(response.data.permissions);
       })
-      .catch((error) => {});
+      .catch((error) => {
+        setPermissions([]);
+      });
   };
 
   const deleteModal = (row) => {
     setdeviceId(row.id);
-    deviceName = row.name;
-
+    setDeviceName(row.name);
     setModal(!modal);
   };
   // Delete Function
@@ -153,7 +154,7 @@ const BiometricList = (props) => {
     setAddNewDeviceModal(!addNewDeviceModal);
   };
   const editDevice = (row) => {
-    setcollectModal({ ...collectModal, ...row });
+    setcollectModal({ ...row });
     setEditDeviceModal(!editDeviceModal);
   };
 
