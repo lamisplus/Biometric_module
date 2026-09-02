@@ -12,4 +12,5 @@ public class CapturedBiometricDto {
     private String matchType;
     private String matchBiometricId;
     private String matchPersonUuid;
+    private String matchTemplateType;
 }

@@ -118,6 +118,7 @@ public class SecugenService {
             capturedBiometrics.setMatchType(biometric.getMatchType());
             capturedBiometrics.setMatchPersonUuid(biometric.getMatchPersonUuid());
             capturedBiometrics.setMatchBiometricId(biometric.getMatchBiometricId());
+            capturedBiometrics.setMatchTemplateType(biometric.getMatchTemplateType());
 
             biometric.setCapturedBiometricsList(
                     BiometricStoreDTO.addCapturedBiometrics(biometric.getPatientId(), capturedBiometrics));
@@ -295,6 +296,7 @@ public class SecugenService {
 
         biometricEnrollmentDto.setMatch(true);
         biometricEnrollmentDto.setMatchBiometricId(match.getBiometricId());
+        biometricEnrollmentDto.setMatchTemplateType(match.getTemplateType());
         boolean sameFinger = match.getTemplateType() != null
                 && match.getTemplateType().equalsIgnoreCase(biometricEnrollmentDto.getTemplateType());
 

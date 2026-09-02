@@ -11,6 +11,7 @@ import org.lamisplus.modules.biometric.domain.Biometric;
 import org.lamisplus.modules.biometric.domain.BiometricDevice;
 import org.lamisplus.modules.biometric.domain.Deduplication;
 import org.lamisplus.modules.biometric.domain.dto.*;
+import org.lamisplus.modules.biometric.enumeration.MatchTypes;
 import org.lamisplus.modules.biometric.repository.BiometricDeviceRepository;
 import org.lamisplus.modules.biometric.repository.BiometricRepository;
 import org.lamisplus.modules.biometric.repository.DeduplicationRepository;
@@ -105,26 +106,66 @@ public class BiometricService {
         biometricRepository.saveAll (biometrics);
         templateIndex.index (biometrics);
 
-        if(biometricEnrollmentDto.getDeduplication() != null){
-            log.info("Deduplication Data ***** {}", biometricEnrollmentDto.getDeduplication());
-            Deduplication deduplication = new Deduplication();
-
-            deduplication.setPersonUuid(person.getUuid());
-            deduplication.setDetails(biometricEnrollmentDto.getDeduplication().getDetails());
-            deduplication.setImperfectMatchCount(biometricEnrollmentDto.getDeduplication().getImperfectMatchCount());
-            deduplication.setPerfectMatchCount(biometricEnrollmentDto.getDeduplication().getPerfectMatchCount());
-            deduplication.setBaselineFingerCount(biometricEnrollmentDto.getDeduplication().getBaselineFingerCount());
-            deduplication.setRecaptureFingerCount(biometricEnrollmentDto.getDeduplication().getRecaptureFingerCount());
-            deduplication.setUnmatchedCount(biometricEnrollmentDto.getDeduplication().getUnmatchedCount());
-            deduplication.setMatchedCount(biometricEnrollmentDto.getDeduplication().getMatchedCount());
-            deduplication.setDeduplicationDate(enrollmentDate);
-
-            // Saving recapture fingerprints deduplication information
+        Deduplication deduplication = buildDeduplication(biometricEnrollmentDto, person.getUuid(), recap, enrollmentDate);
+        if(deduplication != null){
             deduplicationRepository.save(deduplication);
         }
         return getBiometricDto (biometrics, personId);
     }
 
+
+    private Deduplication buildDeduplication(BiometricEnrollmentDto biometricEnrollmentDto, String personUuid,
+                                             Integer recapture, LocalDate enrollmentDate) {
+        Deduplication supplied = biometricEnrollmentDto.getDeduplication();
+        if (supplied == null && (recapture == null || recapture <= RECAPTURE)) {
+            return null;
+        }
+
+        Deduplication deduplication = new Deduplication();
+        deduplication.setPersonUuid(personUuid);
+        deduplication.setDeduplicationDate(enrollmentDate);
+
+        if (supplied != null) {
+            deduplication.setDetails(supplied.getDetails());
+            deduplication.setImperfectMatchCount(supplied.getImperfectMatchCount());
+            deduplication.setPerfectMatchCount(supplied.getPerfectMatchCount());
+            deduplication.setBaselineFingerCount(supplied.getBaselineFingerCount());
+            deduplication.setRecaptureFingerCount(supplied.getRecaptureFingerCount());
+            deduplication.setUnmatchedCount(supplied.getUnmatchedCount());
+            deduplication.setMatchedCount(supplied.getMatchedCount());
+            return deduplication;
+        }
+
+        List<CapturedBiometricDto> capturedBiometricsList = biometricEnrollmentDto.getCapturedBiometricsList();
+        Map<String, String> details = new HashMap<>();
+        int perfectMatchCount = 0;
+        int imperfectMatchCount = 0;
+
+        for (CapturedBiometricDto capturedBiometricDto : capturedBiometricsList) {
+            if (MatchTypes.PerfectMatch.getMatchType().equalsIgnoreCase(capturedBiometricDto.getMatchType())) {
+                perfectMatchCount++;
+            } else if (MatchTypes.ImperfectMatch.getMatchType().equalsIgnoreCase(capturedBiometricDto.getMatchType())) {
+                imperfectMatchCount++;
+                details.put(fingerKey("RECAPTURE_", capturedBiometricDto.getTemplateType()),
+                        fingerKey("BASELINE_", capturedBiometricDto.getMatchTemplateType()));
+            }
+        }
+
+        int matchedCount = perfectMatchCount + imperfectMatchCount;
+        deduplication.setDetails(details);
+        deduplication.setPerfectMatchCount(perfectMatchCount);
+        deduplication.setImperfectMatchCount(imperfectMatchCount);
+        deduplication.setMatchedCount(matchedCount);
+        deduplication.setRecaptureFingerCount(capturedBiometricsList.size());
+        deduplication.setUnmatchedCount(capturedBiometricsList.size() - matchedCount);
+        deduplication.setBaselineFingerCount(
+                biometricRepository.findAllByPersonUuidAndRecaptureAndArchived(personUuid, RECAPTURE, UN_ARCHIVED).size());
+        return deduplication;
+    }
+
+    private String fingerKey(String prefix, String templateType) {
+        return prefix + (templateType == null ? "UNKNOWN" : templateType.toUpperCase().replaceAll(" ", "_"));
+    }
 
     public CapturedBiometricDTOS getByPersonId(Long personId) {
         Person person = personRepository.findById (personId)
