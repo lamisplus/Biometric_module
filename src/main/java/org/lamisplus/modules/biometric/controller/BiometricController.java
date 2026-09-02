@@ -102,17 +102,8 @@ public class BiometricController {
 
     @GetMapping(BASE_URL_VERSION_ONE + "/person/{personUuid}/biometric-count")
     public ResponseEntity<List<GroupedCapturedBiometric>> getPatientBiometricCount(@PathVariable String personUuid){
-        try {
-            System.out.println("Heeeerereer");
-            List<GroupedCapturedBiometric> biometricGroup = biometricService.getPatientBiometricCount(personUuid);
-            if (biometricGroup.size() > 0) {
-                System.out.println("In here");
-                return new ResponseEntity<>(biometricGroup, HttpStatus.OK);
-            } else {
-                System.out.println("in there out");
-                return new ResponseEntity<>(biometricGroup, HttpStatus.NOT_FOUND);
-            }
-        }catch (Exception e){ e.printStackTrace();}
-        return null;
+        List<GroupedCapturedBiometric> biometricGroup = biometricService.getPatientBiometricCount(personUuid);
+        return new ResponseEntity<>(biometricGroup,
+                biometricGroup.isEmpty() ? HttpStatus.NOT_FOUND : HttpStatus.OK);
     }
 }

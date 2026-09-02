@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BiometricService {
 
-    private static final LocalDate REPLACE_DATE = LocalDate.now();
     private static final int UN_ARCHIVED = 0;
     private static final int RECAPTURE = 0;
     private static final int ARCHIVED = 1;
@@ -96,12 +95,16 @@ public class BiometricService {
         String deviceName = biometricEnrollmentDto.getDeviceName ();
         String reason = biometricEnrollmentDto.getReason();
 
+        Long currentFacilityId = userService.getUserWithRoles ()
+                .map(User::getCurrentOrganisationUnitId)
+                .orElse(null);
+
         List<CapturedBiometricDto> capturedBiometricsList = biometricEnrollmentDto.getCapturedBiometricsList ();
         List<Biometric> biometrics = capturedBiometricsList.stream ()
                 .map (capturedBiometricDto -> convertDtoToEntity (capturedBiometricDto, person, biometricType, deviceName,
                         reason, capturedBiometricDto.getImageQuality(),
-                        recap, biometricEnrollmentDto.getRecaptureMessage(), capturedBiometricsList.size(), enrollmentDate, isMobile, biometricEnrollmentDto.getMatchType(),
-                        biometricEnrollmentDto.getMatchPersonUuid(), biometricEnrollmentDto.getMatchBiometricId()))
+                        recap, biometricEnrollmentDto.getRecaptureMessage(), capturedBiometricsList.size(), enrollmentDate, isMobile,
+                        currentFacilityId))
                 .collect (Collectors.toList ());
         biometricRepository.saveAll (biometrics);
         templateIndex.index (biometrics);
@@ -208,7 +211,6 @@ public class BiometricService {
 
     private CapturedBiometricDTOS getCapturedBiometrics(List<String> recaptures,
                                                            String personUuid){
-        CapturedBiometricDto capturedBiometricDto = new CapturedBiometricDto();
         CapturedBiometricDTOS capturedBiometricDtos = new CapturedBiometricDTOS();
         List<List<CapturedBiometricDto>> capturedBiometricsList = new ArrayList<>();
         recaptures.forEach(recapture->{
@@ -216,11 +218,13 @@ public class BiometricService {
             biometricRepository
                     .findAllByPersonUuidAndRecapture(personUuid, recapture)
                     .forEach(biometric1 -> {
+                        CapturedBiometricDto capturedBiometricDto = new CapturedBiometricDto();
+                        capturedBiometricDto.setId(biometric1.getId());
                         capturedBiometricDto.setTemplate(biometric1.getTemplate());
                         capturedBiometricDto.setTemplateType(biometric1.getTemplateType());
                         capturedBiometricDto.setImageQuality(biometric1.getImageQuality());
                         capturedBiometricDto.setMatchType(biometric1.getMatchType());
-                        capturedBiometricDto.setMatchPersonUuid(biometric1.getPersonUuid());
+                        capturedBiometricDto.setMatchPersonUuid(biometric1.getMatchPersonUuid());
                         capturedBiometricDto.setMatchBiometricId(biometric1.getMatchBiometricId());
                         if(biometric1.getHashed() != null)capturedBiometricDto.setHashed(biometric1.getHashed());
                         capturedBiometrics.add(capturedBiometricDto);
@@ -249,7 +253,8 @@ public class BiometricService {
            // BiometricEnrollmentDto biometricEnrollmentDto,
             Person person, String biometricType,
             String deviceName, String reason, int imageQuality,
-            Integer recapture, String recaptureMessage, Integer count, LocalDate date, Boolean isMobile, String matchType, String matchPerson, String matchBiometric) {
+            Integer recapture, String recaptureMessage, Integer count, LocalDate date, Boolean isMobile,
+            Long currentFacilityId) {
         Biometric biometric = new Biometric ();
 //        check for mobile Id exist
         if (capturedBiometricDto.getId() != null && isMobile) {
@@ -273,13 +278,10 @@ public class BiometricService {
         biometric.setRecaptureMessage(recaptureMessage);
         biometric.setCount(count);
         biometric.setMatchType(capturedBiometricDto.getMatchType());
-        biometric.setMatchPersonUuid(person.getUuid ());
-        biometric.setMatchBiometricId(capturedBiometricDto.getId());
-        Optional<User> userWithRoles = userService.getUserWithRoles ();
-        if(userWithRoles.isPresent ()){
-            User user = userWithRoles.get ();
-            biometric.setFacilityId (user.getCurrentOrganisationUnitId ());
-        }
+        biometric.setMatchPersonUuid(capturedBiometricDto.getMatchPersonUuid() != null
+                ? capturedBiometricDto.getMatchPersonUuid() : person.getUuid ());
+        biometric.setMatchBiometricId(capturedBiometricDto.getMatchBiometricId());
+        biometric.setFacilityId (currentFacilityId);
         return biometric;
     }
     private List<BiometricDevice> saveDevices(BiometricDevice biometricDevice, Boolean active){
@@ -359,49 +361,39 @@ public class BiometricService {
     }
 
     public void makeBaseLine(String personUuid, LocalDate captureDate, Integer recapture) {
+        if (recapture == null || recapture == RECAPTURE) {
+            throw new IllegalTypeException(Biometric.class, "Recapture:", "The baseline cannot replace itself");
+        }
         List<Biometric> recapturedBiometrics = biometricRepository.findAllByPersonUuidAndDateAndArchived(personUuid, captureDate, UN_ARCHIVED);
         List<Biometric> baselineBiometrics = biometricRepository.findAllByPersonUuidAndRecaptureAndArchived(personUuid, RECAPTURE, UN_ARCHIVED);
 
-        // Filter recapturedBiometrics based on specific conditions
-        List<Biometric> filteredRecapturedBiometrics = recapturedBiometrics.stream()
+        List<Biometric> promoted = recapturedBiometrics.stream()
                 .filter(recap -> recap.getPersonUuid().equals(personUuid))
-                .filter(recap -> recap.getRecapture().equals(recapture))
-                .filter(recap -> recap.getDate().equals(captureDate))
+                .filter(recap -> recapture.equals(recap.getRecapture()))
+                .filter(recap -> captureDate.equals(recap.getDate()))
                 .collect(Collectors.toList());
 
-        if (!filteredRecapturedBiometrics.isEmpty()) {
-
-            // Override recapture and replaceDate properties for filteredRecapturedBiometrics
-            filteredRecapturedBiometrics = filteredRecapturedBiometrics.stream()
-                    .map(biometric -> {
-                        biometric.setRecapture(RECAPTURE);
-                        biometric.setReplaceDate(REPLACE_DATE);
-                        return biometric;
-                    })
-                    .collect(Collectors.toList());
-
-            // Increment recapture if it's not 0
-//            recapturedBiometrics = recapturedBiometrics.stream()
-//                    .map(biometric -> {
-//                        if (biometric.getRecapture() != 0) {
-//                            biometric.setRecapture(biometric.getRecapture() + 1);
-//                        }
-//                        return biometric;})
-//                    .collect(Collectors.toList());
-        }else {
+        if (promoted.isEmpty()) {
             throw new EntityNotFoundException(Biometric.class, "Recapture", "biometrics");
         }
-
-        if(!baselineBiometrics.isEmpty()){
-            baselineBiometrics = baselineBiometrics.stream()
-                    .map(biometric -> {biometric.setArchived(ARCHIVED); return biometric;})
-                    .collect(Collectors.toList());
-        }else {
+        if (baselineBiometrics.isEmpty()) {
             throw new EntityNotFoundException(Biometric.class, "Baseline", "biometrics");
         }
-        List<Biometric> merged = new ArrayList<>();
-        merged.addAll(recapturedBiometrics);
-        merged.addAll(baselineBiometrics);
+
+        Set<String> promotedIds = promoted.stream().map(Biometric::getId).collect(Collectors.toSet());
+        List<Biometric> replaced = baselineBiometrics.stream()
+                .filter(biometric -> !promotedIds.contains(biometric.getId()))
+                .collect(Collectors.toList());
+
+        LocalDate replaceDate = LocalDate.now();
+        promoted.forEach(biometric -> {
+            biometric.setRecapture(RECAPTURE);
+            biometric.setReplaceDate(replaceDate);
+        });
+        replaced.forEach(biometric -> biometric.setArchived(ARCHIVED));
+
+        List<Biometric> merged = new ArrayList<>(promoted);
+        merged.addAll(replaced);
         biometricRepository.saveAll(merged);
         templateIndex.index(merged);
     }
@@ -445,12 +437,6 @@ public class BiometricService {
     }
 
     public List<GroupedCapturedBiometric> getPatientBiometricCount(String personUuid) {
-        try {
-            System.out.println("hereereer");
-            return biometricRepository.getPatientBiometricCount(personUuid);
-        }catch (Exception e){
-            System.out.println("Excpeee");
-            e.printStackTrace();}
-        return null;
+        return biometricRepository.getPatientBiometricCount(personUuid);
     }
 }
