@@ -38,6 +38,7 @@ public class BiometricService {
     private final PersonRepository personRepository;
     private  final UserService userService;
     private final DeduplicationRepository deduplicationRepository;
+    private final BiometricTemplateIndex templateIndex;
 
     public BiometricDto biometricEnrollment(BiometricEnrollmentDto biometricEnrollmentDto, Boolean isMobile) {
         AtomicInteger existingCount = new AtomicInteger();
@@ -102,6 +103,7 @@ public class BiometricService {
                         biometricEnrollmentDto.getMatchPersonUuid(), biometricEnrollmentDto.getMatchBiometricId()))
                 .collect (Collectors.toList ());
         biometricRepository.saveAll (biometrics);
+        templateIndex.index (biometrics);
 
         if(biometricEnrollmentDto.getDeduplication() != null){
             log.info("Deduplication Data ***** {}", biometricEnrollmentDto.getDeduplication());
@@ -292,7 +294,7 @@ public class BiometricService {
     }
 
     public BiometricDto updatePersonBiometric(Long personId, BiometricEnrollmentDto biometricEnrollmentDto, Boolean isMobile) {
-        biometricRepository.deleteAll(this.getPersonBiometrics(personId));
+        this.deletePersonBiometrics(this.getPersonBiometrics(personId));
         return biometricEnrollment(biometricEnrollmentDto, isMobile);
     }
     public List<Biometric> getAllPersonBiometric(Long personId) {
@@ -307,7 +309,12 @@ public class BiometricService {
         return personBiometrics;
     }
     public void deleteAllPersonBiometrics(Long personId) {
-        this.biometricRepository.deleteAll(this.getAllPersonBiometric(personId));
+        this.deletePersonBiometrics(this.getAllPersonBiometric(personId));
+    }
+
+    private void deletePersonBiometrics(List<Biometric> biometrics) {
+        biometricRepository.deleteAll(biometrics);
+        templateIndex.remove(biometrics.stream().map(Biometric::getId).collect(Collectors.toList()));
     }
 
     public void makeBaseLine(String personUuid, LocalDate captureDate, Integer recapture) {
@@ -355,12 +362,14 @@ public class BiometricService {
         merged.addAll(recapturedBiometrics);
         merged.addAll(baselineBiometrics);
         biometricRepository.saveAll(merged);
+        templateIndex.index(merged);
     }
 
     public void deleteBiometrics(String id) {
         Biometric biometric = biometricRepository.findById(id)
                 .orElseThrow(()-> new EntityNotFoundException(Biometric.class,"id:", ""+id));
         biometricRepository.deleteById(biometric.getId());
+        templateIndex.remove(Collections.singletonList(biometric.getId()));
     }
 
     /**
