@@ -51,13 +51,15 @@ public interface BiometricRepository extends JpaRepository<Biometric, String> {
     @Query(value="SELECT template FROM biometric WHERE person_uuid=?1 AND recapture=?2", nativeQuery = true)
     List<byte[]> getPersonUuidTemplatesForRecapture(String personUuid, Integer recapture);
 
-    @Query(value="SELECT DISTINCT (b.recapture) AS recapture, " +
-            "b.enrollment_date AS captureDate, b.person_uuid AS personUuid, " +
-            "b.count, b.archived, replace_date AS replaceDate " +
+    // count is derived per round, not read from the stored column, which drifts once a print is deleted
+    @Query(value="SELECT b.recapture AS recapture, " +
+            "MAX(b.enrollment_date) AS captureDate, b.person_uuid AS personUuid, " +
+            "COUNT(*) AS count, MIN(b.archived) AS archived, MAX(b.replace_date) AS replaceDate " +
             "FROM biometric b " +
             "INNER JOIN patient_person pp ON pp.uuid=b.person_uuid " +
             "WHERE pp.id=?1 AND b.archived != 1 AND pp.archived=0 " +
-            "ORDER BY recapture DESC", nativeQuery = true)
+            "GROUP BY b.recapture, b.person_uuid " +
+            "ORDER BY b.recapture DESC", nativeQuery = true)
     List<GroupedCapturedBiometric> getGroupedPersonBiometric (Long patientId);
     
     List<Biometric> findAllByPersonUuidAndRecapture(String personUuid, Integer recapture);
@@ -77,6 +79,13 @@ public interface BiometricRepository extends JpaRepository<Biometric, String> {
     @Transactional
     @Query("UPDATE Biometric b SET b.recapture = 0 WHERE b.recapture IS NULL")
     void updateRecaptureNullField();
+
+    @Modifying
+    @Transactional
+    @Query(value="UPDATE biometric SET count=(SELECT COUNT(*) FROM biometric x " +
+            "WHERE x.person_uuid=?1 AND x.recapture=?2 AND x.archived=0) " +
+            "WHERE person_uuid=?1 AND recapture=?2 AND archived=0", nativeQuery = true)
+    void refreshCapturedCount(String personUuid, Integer recapture);
 
     @Query(value = "SELECT recapture AS recapture, COUNT(*) AS count FROM biometric " +
             "WHERE person_uuid = ?1 AND archived = 0 GROUP BY recapture", nativeQuery = true)

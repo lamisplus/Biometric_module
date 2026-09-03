@@ -354,4 +354,14 @@
         </sql>
     </changeSet>
 
+    <changeSet failOnError="false" author="Joshua Gabriel" id="biometrics-0020">
+        <sql>
+            UPDATE biometric b SET count=t.c
+                FROM (SELECT person_uuid, recapture, COUNT(*) AS c FROM biometric
+                      WHERE archived=0 GROUP BY person_uuid, recapture) t
+            WHERE b.archived=0 AND b.person_uuid=t.person_uuid AND b.recapture=t.recapture
+              AND (b.count IS NULL OR b.count &lt;&gt; t.c);
+        </sql>
+    </changeSet>
+
 </databaseChangeLog>

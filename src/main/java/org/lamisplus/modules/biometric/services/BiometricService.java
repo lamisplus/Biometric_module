@@ -403,6 +403,7 @@ public class BiometricService {
                 .orElseThrow(()-> new EntityNotFoundException(Biometric.class,"id:", ""+id));
         biometricRepository.deleteById(biometric.getId());
         templateIndex.remove(Collections.singletonList(biometric.getId()));
+        biometricRepository.refreshCapturedCount(biometric.getPersonUuid(), biometric.getRecapture());
     }
 
     /**
