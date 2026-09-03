@@ -23,7 +23,6 @@ public class BiometricStoreDTO {
         synchronized (patientBiometricStore) {
             List<CapturedBiometricDto> capturedBiometrics =
                     patientBiometricStore.computeIfAbsent(patientId, key -> new ArrayList<>());
-            removeByTemplateType(capturedBiometrics, capturedBiometric.getTemplateType());
             capturedBiometrics.add(capturedBiometric);
             return new ArrayList<>(capturedBiometrics);
         }
