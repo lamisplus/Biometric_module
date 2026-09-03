@@ -2,6 +2,7 @@ package org.lamisplus.modules.biometric.services;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lamisplus.modules.base.controller.apierror.EntityNotFoundException;
+import org.lamisplus.modules.biometric.controller.BiometricOperationException;
 import org.lamisplus.modules.biometric.domain.Biometric;
 import org.lamisplus.modules.biometric.domain.ClientIdentificationProject;
 import org.lamisplus.modules.biometric.domain.dto.*;
@@ -25,6 +26,10 @@ public class SecugenService {
     public static final String RECAPTURE_MESSAGE = "RECAPTURE_MESSAGE";
     public static final int RECAPTURE = 0;
     public static final String FINGERPRINT_ALREADY_CAPTURED = "Fingerprint already captured";
+    public static final String SCANNER_NOT_FOUND =
+            "Fingerprint scanner was not found. Check that it is plugged in and that the correct reader is selected.";
+    private static final String POOR_CAPTURE =
+            "The fingerprint was not read clearly. Ask the client to reposition the finger and scan again.";
     public static final int IMAGE_QUALITY = 61;
     public static final int MINIMUM_TEMPLATE_LENGTH = 200;
     private static final String SUCCESS_MATCH_FOUND = "SUCCESS_MATCH_FOUND";
@@ -52,7 +57,7 @@ public class SecugenService {
         if(biometric.getMessage() == null) biometric.setMessage(new HashMap<>());
             // checks if the secugen device is active
         if (this.scannerIsNotSet(reader)) {
-            biometric.getMessage().put(ERROR_MESSAGE, "READER NOT AVAILABLE");
+            biometric.getMessage().put(ERROR_MESSAGE, SCANNER_NOT_FOUND);
             biometric.setType(BiometricEnrollmentDto.Type.ERROR);
             return biometric;
         }
@@ -63,7 +68,8 @@ public class SecugenService {
         Long error = secugenManager.boot(secugenManager.getDeviceId(reader));
         if (error > 0L) {
             ErrorCode errorCode = ErrorCode.getErrorCode(error);
-            biometric.getMessage().put(ERROR_MESSAGE, errorCode.getErrorName() + ": " + errorCode.getErrorMessage());
+            biometric.getMessage().put(ERROR_MESSAGE, "Could not start the fingerprint scanner: "
+                    + errorCode.getErrorMessage() + ". Check that it is connected, then try again.");
             biometric.setType(BiometricEnrollmentDto.Type.ERROR);
             return biometric;
         }
@@ -126,7 +132,8 @@ public class SecugenService {
 
         } catch (Exception exception) {
             log.error("Error while capturing a fingerprint", exception);
-            return this.addMessage(ERROR_MESSAGE, biometric, exception.getMessage());
+            String reason = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+            return this.addMessage(ERROR_MESSAGE, biometric, "The scanner reported: " + reason);
         }
         return biometric;
     }
@@ -194,10 +201,10 @@ public class SecugenService {
         }
         int imageQuality = biometricEnrollmentDto.getMainImageQuality();
         int templateLength = biometricEnrollmentDto.getTemplate() == null ? 0 : biometricEnrollmentDto.getTemplate().length;
-        biometricEnrollmentDto.getMessage().put(messageKey, "ERROR WHILE CAPTURING... " +
+        biometricEnrollmentDto.getMessage().put(messageKey,
+                (customMessage != null ? customMessage : POOR_CAPTURE) +
                 "\nImage Quality: " + (imageQuality < IMAGE_QUALITY ? "Bad - " + imageQuality : "Good - " + imageQuality) +
-                "\nTemplate Length: " + (templateLength < MINIMUM_TEMPLATE_LENGTH ? "Bad - " + templateLength : "Good - " + templateLength) +
-                "\n" + (customMessage != null ? customMessage : "")
+                "\nTemplate Length: " + (templateLength < MINIMUM_TEMPLATE_LENGTH ? "Bad - " + templateLength : "Good - " + templateLength)
         );
         biometricEnrollmentDto.setType(BiometricEnrollmentDto.Type.ERROR);
         return biometricEnrollmentDto;
@@ -229,7 +236,7 @@ public class SecugenService {
      */
     public ClientIdentificationDTO identify(String reader, BiometricEnrollmentDto biometricEnrollmentDto){
         if (this.scannerIsNotSet(reader)) {
-            throw new EntityNotFoundException(Biometric.class, "Scanner", "Scanner");
+            throw new BiometricOperationException(SCANNER_NOT_FOUND);
         }
         BiometricEnrollmentDto biometric = biometricEnrollmentDto;
         if (biometric == null) {

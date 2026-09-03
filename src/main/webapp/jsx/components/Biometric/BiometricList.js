@@ -16,7 +16,7 @@ import { Card, CardContent } from "@material-ui/core";
 import AddBiometricDevice from "./AddBiometric";
 import EditBiometric from "./EditBiometric";
 import Configuration from "../Pims/Configuration";
-import { token as token, url as baseUrl } from "./../../../api";
+import { token as token, url as baseUrl, errorMessage } from "./../../../api";
 
 import "@reach/menu-button/styles.css";
 import { ToastContainer, toast } from "react-toastify";
@@ -112,7 +112,7 @@ const BiometricList = (props) => {
       .catch((error) => {
         setLoading(false);
         setBiometricList([]);
-        toast.error("Could not load the biometric devices. Please try again...");
+        toast.error(errorMessage(error, "Could not load the biometric devices. Please try again."));
       });
   }
   //Get list of Permissions
@@ -146,7 +146,7 @@ const BiometricList = (props) => {
         setModal(false);
       })
       .catch((error) => {
-        toast.error("Something went wrong. Please try again...");
+        toast.error(errorMessage(error, "The device could not be deleted. Please try again."));
       });
   };
 

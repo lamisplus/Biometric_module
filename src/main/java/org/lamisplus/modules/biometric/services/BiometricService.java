@@ -10,6 +10,7 @@ import org.lamisplus.modules.base.service.UserService;
 import org.lamisplus.modules.biometric.domain.Biometric;
 import org.lamisplus.modules.biometric.domain.BiometricDevice;
 import org.lamisplus.modules.biometric.domain.Deduplication;
+import org.lamisplus.modules.biometric.controller.BiometricOperationException;
 import org.lamisplus.modules.biometric.domain.dto.*;
 import org.lamisplus.modules.biometric.enumeration.MatchTypes;
 import org.lamisplus.modules.biometric.repository.BiometricDeviceRepository;
@@ -59,12 +60,15 @@ public class BiometricService {
 
         if(biometricEnrollmentDto.getCapturedBiometricsList().size() < BIOMETRIC_SIZE){
             log.error("Biometric Template is less than 6");
-            throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Biometric template is less than 6");
+            throw new BiometricOperationException(
+                    "At least " + BIOMETRIC_SIZE + " fingers must be captured before saving. Only "
+                            + biometricEnrollmentDto.getCapturedBiometricsList().size() + " were captured.");
         }
 
         if(biometricEnrollmentDto.getType().equals(BiometricEnrollmentDto.Type.ERROR)){
             log.error("The templates are not valid");
-            throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Type is Error");
+            throw new BiometricOperationException(
+                    "The captured fingerprints are not valid. Please capture the fingers again.");
         }
 
         Long personId = biometricEnrollmentDto.getPatientId ();
@@ -73,7 +77,7 @@ public class BiometricService {
     
         if(biometricRepository.getBiometricByDate(person.getUuid(), LocalDate.now()) > 0){
             log.error("Fingerprints for today already synced for client: " + personId);
-            throw new IllegalTypeException(BiometricEnrollmentDto.class,"Biometric Error:", "Cannot capture on same date");
+            throw new BiometricOperationException("Cannot capture on the same date");
         }
         Optional<Integer> opRecapture = biometricRepository.findMaxRecapture(person.getUuid());
         Optional<String> opNullpRecapture = biometricRepository.findNotNullReplaceDate(person.getUuid());
@@ -363,7 +367,7 @@ public class BiometricService {
 
     public void makeBaseLine(String personUuid, LocalDate captureDate, Integer recapture) {
         if (recapture == null || recapture == RECAPTURE) {
-            throw new IllegalTypeException(Biometric.class, "Recapture:", "The baseline cannot replace itself");
+            throw new BiometricOperationException("The baseline capture cannot replace itself. Select a recapture round.");
         }
         List<Biometric> recapturedBiometrics = biometricRepository.findAllByPersonUuidAndDateAndArchived(personUuid, captureDate, UN_ARCHIVED);
         List<Biometric> baselineBiometrics = biometricRepository.findAllByPersonUuidAndRecaptureAndArchived(personUuid, RECAPTURE, UN_ARCHIVED);
@@ -375,10 +379,12 @@ public class BiometricService {
                 .collect(Collectors.toList());
 
         if (promoted.isEmpty()) {
-            throw new EntityNotFoundException(Biometric.class, "Recapture", "biometrics");
+            throw new BiometricOperationException(
+                    "No recaptured fingerprints were found for that date to make the baseline.");
         }
         if (baselineBiometrics.isEmpty()) {
-            throw new EntityNotFoundException(Biometric.class, "Baseline", "biometrics");
+            throw new BiometricOperationException(
+                    "This patient has no baseline fingerprints to replace.");
         }
 
         Set<String> promotedIds = promoted.stream().map(Biometric::getId).collect(Collectors.toSet());

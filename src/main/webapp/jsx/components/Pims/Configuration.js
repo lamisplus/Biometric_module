@@ -20,7 +20,7 @@ import { Spinner } from "reactstrap";
 import axios from "axios";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { token as token, url as baseUrl } from "./../../../api";
+import { token as token, url as baseUrl, errorMessage } from "./../../../api";
 
 const useStyles = makeStyles((theme) => ({
   card: {
@@ -106,21 +106,10 @@ const Configuration = (props) => {
         })
         .catch((error) => {
           setSaving(false);
-          if (error.response && error.response.data) {
-            let errorMessage =
-              error.response.data.apierror &&
-              error.response.data.apierror.message !== ""
-                ? error.response.data.apierror.message
-                : "Something went wrong, please try again";
-
-            toast.error(errorMessage, {
-              position: toast.POSITION.BOTTOM_CENTER,
-            });
-          } else {
-            toast.error("Something went wrong. Please try again...", {
-              position: toast.POSITION.BOTTOM_CENTER,
-            });
-          }
+          toast.error(
+            errorMessage(error, "The PIMS settings could not be saved. Please try again."),
+            { position: toast.POSITION.BOTTOM_CENTER }
+          );
         });
     }
   };
@@ -133,7 +122,7 @@ const Configuration = (props) => {
 
       setLogins(response.data);
     } catch (err) {
-      toast.error("An error occurred while fetching config details", {
+      toast.error(errorMessage(err, "Could not load the PIMS settings. Please try again."), {
         position: toast.POSITION.TOP_RIGHT,
       });
     }

@@ -351,23 +351,26 @@ public class SecugenManager {
                             //biometricTemplate = mapBiometricTemplate(biometricTemplate, imageQuality, imageQuality2, regTemplate, regTemplate2, imageBuffer, imageBuffer2);
                         } else {
                             //biometricTemplate.setId("QUALITY_ERROR");
-                            biometric.getMessage().put("ERROR", "Quality is less than " + score[0]);
+                            biometric.getMessage().put("ERROR", "The two scans of this finger did not match closely enough."
+                                    + " Ask the client to place the same finger again, centred on the scanner.");
                             biometric.setType(BiometricEnrollmentDto.Type.ERROR);
                             return biometric;
                         }
                     } else if (iError == SGFDxErrorCode.SGFDX_ERROR_TIME_OUT) {
                         //biometricTemplate.setId("TIME_OUT");
-                        biometric.getMessage().put("ERROR", "TIME_OUT");
+                        biometric.getMessage().put("ERROR", "No finger was detected before the scanner timed out."
+                                + " Place the finger on the scanner and try again.");
                         biometric.setType(BiometricEnrollmentDto.Type.ERROR);
                         return biometric;
                     } else {
-                        biometric.getMessage().put("ERROR", "CAPTURE_ERROR");
+                        biometric.getMessage().put("ERROR", "The fingerprint could not be captured. Please try again.");
                         biometric.setType(BiometricEnrollmentDto.Type.ERROR);
                         return biometric;
                     }
                 } else {
                     //biometricTemplate.setId("MATCH_ERROR");
-                    biometric.getMessage().put("MATCH_ERROR", "MATCH_ERROR");
+                    biometric.getMessage().put("ERROR", "The two scans of this finger did not match."
+                            + " Ask the client to place the same finger for both scans.");
                     biometric.setType(BiometricEnrollmentDto.Type.ERROR);
                     return biometric;
                 }
@@ -376,13 +379,15 @@ public class SecugenManager {
                 }
                 return biometric;
             } else {
-                biometric.getMessage().put("CAPTURE_ERROR", "CAPTURE_ERROR");
+                biometric.getMessage().put("ERROR", "The fingerprint image could not be read."
+                        + " Check that the scanner is connected and the finger is clean and dry, then try again.");
                 biometric.setType(BiometricEnrollmentDto.Type.ERROR);
                 return biometric;
             }
         }
         catch(Exception e){
-            biometric.getMessage().put("Finger Print Capture Error: ", e.getMessage());
+            biometric.getMessage().put("ERROR", "The fingerprint could not be captured: "
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
             biometric.setType(BiometricEnrollmentDto.Type.ERROR);
             logger.info("Finger Print Capture Error: "+e.getMessage());
         }

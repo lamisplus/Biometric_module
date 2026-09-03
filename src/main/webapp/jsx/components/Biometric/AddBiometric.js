@@ -10,7 +10,7 @@ import {makeStyles} from "@material-ui/core/styles";
 import {toast} from "react-toastify";
 import SaveIcon from "@material-ui/icons/Save";
 import CancelIcon from "@material-ui/icons/Cancel";
-import { token as token, url as baseUrl } from "./../../../api";
+import { token as token, url as baseUrl, errorMessage } from "./../../../api";
 
 const useStyles = makeStyles((theme) => ({
     card: {
@@ -128,7 +128,7 @@ const AddBiometricDevice = (props) => {
             })
             .catch((error) => {
                 setLoading(false)
-                toast.error("Something went wrong. Please try again...")
+                toast.error(errorMessage(error, "The device could not be added. Please try again."))
             });
         }
     }
