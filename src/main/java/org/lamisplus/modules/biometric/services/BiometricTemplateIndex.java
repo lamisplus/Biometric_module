@@ -15,8 +15,10 @@ import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -28,6 +30,7 @@ public class BiometricTemplateIndex {
             "jdbc:h2:mem:biometric_template_index;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
     private static final long SYNCHRONISE_INTERVAL_MILLIS = 2000L;
     private static final long WATERMARK_OVERLAP_SECONDS = 2L;
+    private static final long RECONCILE_INTERVAL_MILLIS = 60000L;
 
     private static final String CREATE_TABLE =
             "CREATE TABLE IF NOT EXISTS facility_template (" +
@@ -48,6 +51,8 @@ public class BiometricTemplateIndex {
                     "template_length, template) KEY (biometric_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
     private static final String DELETE_BY_ID = "DELETE FROM facility_template WHERE biometric_id = ?";
     private static final String DELETE_BY_FACILITY = "DELETE FROM facility_template WHERE facility_id = ?";
+    private static final String COUNT_BY_FACILITY = "SELECT COUNT(*) FROM facility_template WHERE facility_id = ?";
+    private static final String IDS_BY_FACILITY = "SELECT biometric_id FROM facility_template WHERE facility_id = ?";
 
     private static final String SELECT_COLUMNS =
             "SELECT biometric_id, person_uuid, template_type, recapture, template FROM facility_template ";
@@ -60,6 +65,7 @@ public class BiometricTemplateIndex {
     private final BiometricRepository biometricRepository;
     private final Map<Long, Long> lastSynchronisedAt = new ConcurrentHashMap<>();
     private final Map<Long, LocalDateTime> watermark = new ConcurrentHashMap<>();
+    private final Map<Long, Long> lastReconciledAt = new ConcurrentHashMap<>();
 
     private JdbcDataSource dataSource;
     private Connection keepAlive;
@@ -117,10 +123,76 @@ public class BiometricTemplateIndex {
             apply(facilityId, rows);
             lastSynchronisedAt.put(facilityId, now);
             watermark.put(facilityId, LocalDateTime.now().minusSeconds(WATERMARK_OVERLAP_SECONDS));
+            reconcile(facilityId, now);
         } catch (Exception exception) {
             log.error("Could not synchronise the biometric template index for facility {}", facilityId, exception);
             invalidate(facilityId);
         }
+    }
+
+    /**
+     * A row deleted from the database leaves no trace for the modified-date poll to find, so the
+     * index is periodically compared against it and anything no longer there is dropped.
+     */
+    private void reconcile(Long facilityId, long now) {
+        Long previous = lastReconciledAt.get(facilityId);
+        if (previous != null && now - previous < RECONCILE_INTERVAL_MILLIS) {
+            return;
+        }
+        try {
+            long stored = biometricRepository.countIndexableForFacility(facilityId);
+            if (stored == countIndexed(facilityId)) {
+                lastReconciledAt.put(facilityId, now);
+                return;
+            }
+            Set<String> live = new HashSet<>(biometricRepository.findIndexableIdsForFacility(facilityId));
+            List<String> orphaned = new ArrayList<>();
+            for (String indexedId : indexedIds(facilityId)) {
+                if (!live.contains(indexedId)) {
+                    orphaned.add(indexedId);
+                }
+            }
+            if (!orphaned.isEmpty()) {
+                log.info("Dropping {} template(s) from the index that are no longer in the database for facility {}",
+                        orphaned.size(), facilityId);
+                remove(orphaned);
+            }
+            if (stored != countIndexed(facilityId)) {
+                log.info("Index disagrees with the database for facility {}; reloading it in full", facilityId);
+                invalidate(facilityId);
+                apply(facilityId, biometricRepository.findTemplatesForIndex(facilityId));
+                lastSynchronisedAt.put(facilityId, now);
+                watermark.put(facilityId, LocalDateTime.now().minusSeconds(WATERMARK_OVERLAP_SECONDS));
+            }
+            lastReconciledAt.put(facilityId, now);
+        } catch (Exception exception) {
+            // the index was usable before the check; failing to verify it is no reason to discard it
+            log.error("Could not reconcile the biometric template index for facility {}", facilityId, exception);
+        }
+    }
+
+    private long countIndexed(Long facilityId) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(COUNT_BY_FACILITY)) {
+            statement.setLong(1, facilityId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getLong(1) : -1L;
+            }
+        }
+    }
+
+    private List<String> indexedIds(Long facilityId) throws SQLException {
+        List<String> ids = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(IDS_BY_FACILITY)) {
+            statement.setLong(1, facilityId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    ids.add(resultSet.getString(1));
+                }
+            }
+        }
+        return ids;
     }
 
     public void invalidate(Long facilityId) {
@@ -129,12 +201,22 @@ public class BiometricTemplateIndex {
         }
         lastSynchronisedAt.remove(facilityId);
         watermark.remove(facilityId);
+        lastReconciledAt.remove(facilityId);
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(DELETE_BY_FACILITY)) {
             statement.setLong(1, facilityId);
             statement.executeUpdate();
         } catch (SQLException exception) {
             log.error("Could not invalidate the biometric template index for facility {}", facilityId, exception);
+        }
+    }
+
+    /**
+     * Forces every facility to reload, after a bulk change the row-level hooks cannot observe.
+     */
+    public void invalidateAll() {
+        for (Long facilityId : new ArrayList<>(lastSynchronisedAt.keySet())) {
+            invalidate(facilityId);
         }
     }
 

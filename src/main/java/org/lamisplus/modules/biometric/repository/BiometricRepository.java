@@ -42,6 +42,12 @@ public interface BiometricRepository extends JpaRepository<Biometric, String> {
             "FROM biometric WHERE facility_id=?1 AND last_modified_date > ?2", nativeQuery = true)
     List<Object[]> findTemplatesForIndexModifiedSince(Long facilityId, LocalDateTime since);
 
+    @Query(value="SELECT COUNT(*) FROM biometric WHERE facility_id=?1 AND archived=0", nativeQuery = true)
+    long countIndexableForFacility(Long facilityId);
+
+    @Query(value="SELECT id FROM biometric WHERE facility_id=?1 AND archived=0", nativeQuery = true)
+    List<String> findIndexableIdsForFacility(Long facilityId);
+
     @Query(value="SELECT uuid FROM patient_person WHERE id=?1", nativeQuery = true)
     Optional<String> getPersonUuid(Long patientId);
 

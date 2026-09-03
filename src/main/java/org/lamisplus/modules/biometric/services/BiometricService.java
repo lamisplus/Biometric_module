@@ -331,6 +331,7 @@ public class BiometricService {
 
             //update biometric recapture column to base line
             biometricRepository.updateRecaptureNullField();
+            templateIndex.invalidateAll();
             return biometricDeviceRepository.getAllByActiveIsTrue();
         }
         return biometricDeviceRepository.findAll();
