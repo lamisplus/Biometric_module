@@ -94,10 +94,11 @@ public class BiometricController {
         return ResponseEntity.ok (biometricService.getGroupedCapturedBiometric(personId));
     }
 
+    // returns the fingers still held so the capture screen can rebuild its list without guessing
     @DeleteMapping(BASE_URL_VERSION_ONE)
-    public void removeTemplateType(@RequestParam Long personId,
+    public ResponseEntity<List<CapturedBiometricDto>> removeTemplateType(@RequestParam Long personId,
                                    @RequestParam String templateType) {
-        biometricService.removeTemplateType(personId, templateType);
+        return ResponseEntity.ok (biometricService.removeTemplateType(personId, templateType));
     }
 
     @GetMapping(BASE_URL_VERSION_ONE + "/person/{personUuid}/biometric-count")

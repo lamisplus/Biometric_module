@@ -6,10 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-/**
- * Returns the message the operator should read, in the {apierror:{message}} shape the UI already
- * reads. Scoped to this module so other modules keep the base handler.
- */
+// Returns the operator-facing message in the apierror shape the screens already read.
 @Slf4j
 @RestControllerAdvice(assignableTypes = {BiometricController.class, SecugenController.class, PIMSController.class})
 public class BiometricExceptionHandler {

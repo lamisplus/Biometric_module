@@ -440,8 +440,9 @@ public class BiometricService {
      * @param templateType
      * @return nothing (void)
      */
-    public void removeTemplateType(Long personId, String templateType){
+    public List<CapturedBiometricDto> removeTemplateType(Long personId, String templateType){
         BiometricStoreDTO.removeTemplateType(personId, templateType);
+        return BiometricStoreDTO.getCapturedBiometrics(personId);
     }
 
     public List<GroupedCapturedBiometric> getPatientBiometricCount(String personUuid) {

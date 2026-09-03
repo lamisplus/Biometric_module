@@ -130,10 +130,7 @@ public class BiometricTemplateIndex {
         }
     }
 
-    /**
-     * A row deleted from the database leaves no trace for the modified-date poll to find, so the
-     * index is periodically compared against it and anything no longer there is dropped.
-     */
+    // a deleted row leaves nothing for the modified-date poll to find, so compare periodically
     private void reconcile(Long facilityId, long now) {
         Long previous = lastReconciledAt.get(facilityId);
         if (previous != null && now - previous < RECONCILE_INTERVAL_MILLIS) {
@@ -211,9 +208,7 @@ public class BiometricTemplateIndex {
         }
     }
 
-    /**
-     * Forces every facility to reload, after a bulk change the row-level hooks cannot observe.
-     */
+    // forces a reload after a bulk change the row-level hooks cannot observe
     public void invalidateAll() {
         for (Long facilityId : new ArrayList<>(lastSynchronisedAt.keySet())) {
             invalidate(facilityId);

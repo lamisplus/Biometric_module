@@ -17,7 +17,8 @@ import java.util.Optional;
 public interface BiometricRepository extends JpaRepository<Biometric, String> {
     List<Biometric> findAllByPersonUuid(String personUuid);
 
-    @Query(value ="SELECT DISTINCT ON (person_uuid) person_uuid, replace_date FROM biometric WHERE replace_date IS NOT NULL AND person_uuid=?1 AND archived = 0", nativeQuery = true)
+    // one column: two were being read into a single String, which only worked by accident
+    @Query(value ="SELECT DISTINCT person_uuid FROM biometric WHERE replace_date IS NOT NULL AND person_uuid=?1 AND archived = 0", nativeQuery = true)
     Optional<String> findNotNullReplaceDate (String personUuid);
     @Query(value ="SELECT DISTINCT recapture FROM biometric WHERE person_uuid=?1", nativeQuery = true)
     List<String> findRecapturesByPersonUuidAndRecaptures(String personUuid);
