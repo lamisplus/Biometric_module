@@ -4,9 +4,9 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>com.foreach.across</groupId>
-		<artifactId>across-application-parent</artifactId>
-		<version>5.1.0.RELEASE</version>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.3.5.RELEASE</version>
 		<relativePath/>
 	</parent>
 
@@ -19,9 +19,13 @@
 	<name>biometric</name>
 
 	<properties>
-		<java.version>1.8</java.version>
-		<mapstruct.version>1.4.2.Final</mapstruct.version>
-		<org.projectlombok.version>1.18.4</org.projectlombok.version>
+		<java.version>17</java.version>
+		<maven.compiler.source>17</maven.compiler.source>
+		<maven.compiler.target>17</maven.compiler.target>
+		<spring-framework.version>5.3.9</spring-framework.version>
+		<mapstruct.version>1.5.5.Final</mapstruct.version>
+		<lombok.version>1.18.38</lombok.version>
+		<org.projectlombok.version>1.18.38</org.projectlombok.version>
 		<jjwt.version>0.11.2</jjwt.version>
 		<build.revision>1.0.0</build.revision>
 		<audit4j.version>2.5.0</audit4j.version>
@@ -37,38 +41,15 @@
 	</dependencyManagement>
 
 	<repositories>
-		<repository>
-			<id>foreach-nexus</id>
-			<name>Foreach nexus</name>
-			<url>https://repository.foreach.be/nexus/repository/public/</url>
-		</repository>
+
 	</repositories>
 
 	<dependencies>
-		<dependency>
-			<groupId>com.foreach.across</groupId>
-			<artifactId>across-test</artifactId>
-			<exclusions>
-				<exclusion>
-					<groupId>com.foreach.across</groupId>
-					<artifactId>across-core</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
 
 		<dependency>
-			<groupId>com.foreach.across</groupId>
-			<artifactId>across-autoconfigure</artifactId>
-			<exclusions>
-				<exclusion>
-					<groupId>com.foreach.across.modules</groupId>
-					<artifactId>across-hibernate-module</artifactId>
-				</exclusion>
-				<exclusion>
-					<groupId>ch.qos.logback</groupId>
-					<artifactId>logback-classic</artifactId>
-				</exclusion>
-			</exclusions>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
 		</dependency>
 
 		<dependency>
@@ -211,10 +192,7 @@
 			<version>3.9.1</version>
 		</dependency>
 
-		<dependency>
-			<groupId>com.foreach.across.modules</groupId>
-			<artifactId>across-hibernate-module</artifactId>
-		</dependency>
+
 
 		<!--mvn install:install-file -Dfile=C:\\Users\\A\\Documents\\LAMISPLUS\biometric\\FDxSDKPro_jdk1.6.0_45.jar -DgroupId=secugen -DartifactId=FDxSDKPro -Dversion=1.6 -Dpackaging=jar-->
 
@@ -263,7 +241,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-jar-plugin</artifactId>
-				<version>2.6</version>
+				<version>3.3.0</version>
 				<configuration>
 					<archive>
 						<manifest>
@@ -278,7 +256,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.8.0</version>
+				<version>3.11.0</version>
 				<configuration>
 					<source>${java.version}</source>
 					<target>${java.version}</target>
@@ -311,33 +289,33 @@
 					<installDirectory>${project.basedir}</installDirectory>
 				</configuration>
 				<executions>
-					<execution>
-						<id>install node and npm</id>
-						<goals>
-							<goal>install-node-and-npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-					</execution>
-					<execution>
-						<id>npm install</id>
-						<goals>
-							<goal>npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-						<configuration>
-							<arguments>install</arguments>
-						</configuration>
-					</execution>
-					<execution>
-						<id>npm run build</id>
-						<goals>
-							<goal>npm</goal>
-						</goals>
-						<phase>generate-resources</phase>
-						<configuration>
-							<arguments>run build</arguments>
-						</configuration>
-					</execution>
+<!--					<execution>-->
+<!--						<id>install node and npm</id>-->
+<!--						<goals>-->
+<!--							<goal>install-node-and-npm</goal>-->
+<!--						</goals>-->
+<!--						<phase>generate-resources</phase>-->
+<!--					</execution>-->
+<!--					<execution>-->
+<!--						<id>npm install</id>-->
+<!--						<goals>-->
+<!--							<goal>npm</goal>-->
+<!--						</goals>-->
+<!--						<phase>generate-resources</phase>-->
+<!--						<configuration>-->
+<!--							<arguments>install</arguments>-->
+<!--						</configuration>-->
+<!--					</execution>-->
+<!--					<execution>-->
+<!--						<id>npm run build</id>-->
+<!--						<goals>-->
+<!--							<goal>npm</goal>-->
+<!--						</goals>-->
+<!--						<phase>generate-resources</phase>-->
+<!--						<configuration>-->
+<!--							<arguments>run build</arguments>-->
+<!--						</configuration>-->
+<!--					</execution>-->
 				</executions>
 			</plugin>
 		</plugins>

@@ -1,21 +1,11 @@
 package org.lamisplus.modules.biometric;
 
-import com.foreach.across.AcrossApplicationRunner;
-import com.foreach.across.config.AcrossApplication;
+
 import com.foreach.across.core.AcrossModule;
 import com.foreach.across.core.annotations.AcrossDepends;
 import com.foreach.across.core.context.configurer.ComponentScanConfigurer;
 import com.foreach.across.modules.hibernate.jpa.AcrossHibernateJpaModule;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Bean;
-
-import java.io.File;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.ArrayList;
 
 @AcrossDepends(
 		required = {
